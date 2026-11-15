@@ -59,6 +59,14 @@ internal static class FinancialSmokeTests
         }
         catch(InvalidOperationException) { }
 
+        BusinessData.SaveExpense(0,DateTime.Today,"Supplies","CI Vendor","Test expense",10m);
+        long expenseId=FinancialOperations.Scalar(db,null,"SELECT max(id) FROM expenses");
+        BusinessData.SaveExpense(expenseId,DateTime.Today,"Supplies","CI Vendor","Edited expense",15m);
+        BusinessData.DeleteExpense(expenseId);
+        long expenseBalance=FinancialReports.Ledger(DateTime.Today)
+            .Where(x=>x.Account=="Expense: Supplies").Sum(x=>x.Debit-x.Credit);
+        if(expenseBalance!=0)throw new Exception("Deleted expense journal must be reversed.");
+
         using(var j=Store.Open())
         using(var cmd=j.CreateCommand())
         {
