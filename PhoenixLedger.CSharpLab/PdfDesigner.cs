@@ -37,7 +37,7 @@ internal sealed class PdfDesigner : Form
             Padding=new Padding(8),BackColor=Color.White};
         documentKind.Items.AddRange(new object[]{"Invoice","Estimate","Purchase Order","Report"});
         documentKind.SelectedItem=selectedKind;
-        paper.Items.AddRange(new object[]{"Letter","A4"});
+        paper.Items.AddRange(new object[]{"Letter","A4","Legal","Letter Landscape","A4 Landscape"});
         Button button(string title,Action action,int width=112)
         {
             var b=new Button{Text=title,Width=width,Height=33,Margin=new Padding(3,1,3,1)};
@@ -61,6 +61,7 @@ internal sealed class PdfDesigner : Form
         toolbar.Controls.Add(button("Save design",SaveLayout,132));
         toolbar.Controls.Add(button("Preview PDF",PreviewPdf,124));
         toolbar.Controls.Add(button("Export JSON",ExportJson,132));
+        toolbar.Controls.Add(button("Import JSON",ImportJson,132));
         toolbar.Controls.Add(button("Reset design",ResetLayout,120));
 
         var outer=new SplitContainer{Dock=DockStyle.Fill,Orientation=Orientation.Vertical,SplitterDistance=780};
@@ -112,7 +113,14 @@ internal sealed class PdfDesigner : Form
         {
             page.SuspendLayout();
             page.Controls.Clear();
-            page.Size=design.Paper=="A4"?new Size(595,842):new Size(612,792);
+            page.Size=design.Paper switch
+            {
+                "A4"=>new Size(595,842),
+                "A4 Landscape"=>new Size(842,595),
+                "Letter Landscape"=>new Size(792,612),
+                "Legal"=>new Size(612,1008),
+                _=>new Size(612,792)
+            };
             scroll.AutoScrollMinSize=new Size(page.Width+60,page.Height+50);
             layers.Items.Clear();
             foreach(var item in design.Elements)
@@ -242,6 +250,26 @@ internal sealed class PdfDesigner : Form
         File.WriteAllText(dlg.FileName,JsonSerializer.Serialize(design,
             new JsonSerializerOptions{WriteIndented=true}));
     }
+    private void ImportJson()
+    {
+        using var file=new OpenFileDialog
+        {
+            Title="Import PDF template layout",
+            Filter="PDF layout JSON (*.json)|*.json"
+        };
+        if(file.ShowDialog(this)!=DialogResult.OK)return;
+        var json=File.ReadAllText(file.FileName);
+        var loaded=JsonSerializer.Deserialize<PdfLayout>(json) ??
+            throw new InvalidDataException("The selected file is not a PDF layout.");
+        loaded.Validate();
+        design=loaded;
+        selected=null;
+        changing=true;
+        try {paper.SelectedItem=design.Paper;}
+        finally{changing=false;}
+        RefreshCanvas();
+    }
+
     private void ResetLayout()
     {
         if(MessageBox.Show(this,"Restore the default design? Save any changes first.",
