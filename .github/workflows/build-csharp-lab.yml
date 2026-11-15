@@ -40,6 +40,12 @@ jobs:
       - name: Compile the Windows Forms application
         run: dotnet build PhoenixLedger.CSharpLab/PhoenixLedger.CSharpLab.csproj --no-restore --configuration Release
 
+      - name: Smoke-test all navigation pages on Windows
+        shell: pwsh
+        run: |
+          dotnet run --project PhoenixLedger.CSharpLab/PhoenixLedger.CSharpLab.csproj --no-build --configuration Release -- --smoke-ui
+          if ($LASTEXITCODE -ne 0) { throw "Windows UI smoke test failed." }
+
       - name: Publish self-contained Windows x64 application
         shell: pwsh
         run: |
