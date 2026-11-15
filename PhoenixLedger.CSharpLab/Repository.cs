@@ -110,6 +110,16 @@ internal static class Repository
                 ORDER BY d.id DESC
                 """,
             "Inventory History" => HistorySql(),
+            "Expenses" => """
+                SELECT id AS ID,spent_on AS Date,category AS Category,
+                       COALESCE(vendor,'') AS Vendor,COALESCE(description,'') AS Description,
+                       printf('$%.2f',amount/100.0) AS Amount
+                FROM expenses
+                WHERE spent_on LIKE @q OR category LIKE @q OR COALESCE(vendor,'') LIKE @q
+                    OR COALESCE(description,'') LIKE @q
+                ORDER BY spent_on DESC,id DESC
+                """,
+            "Accounting" => BusinessData.AccountingSql(),
             _ => throw new ArgumentException("Unknown page", nameof(section))
         };
         using var c = Store.Open();
