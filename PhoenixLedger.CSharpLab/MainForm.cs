@@ -116,7 +116,10 @@ internal sealed partial class MainForm : Form
         grid.MultiSelect=true;
         grid.SelectionMode=DataGridViewSelectionMode.FullRowSelect;
         grid.RowHeadersVisible=false;
-        grid.AutoGenerateColumns=true;
+        // Every list page is a text/data table. Image columns should only be
+        // created explicitly for actual thumbnails, never auto-inferred from
+        // a previous binding or a field named "Image".
+        grid.AutoGenerateColumns=false;
         grid.AutoSizeColumnsMode=DataGridViewAutoSizeColumnsMode.DisplayedCells;
         grid.RowTemplate.Height=34;
         grid.EnableHeadersVisualStyles=false;
@@ -144,6 +147,14 @@ internal sealed partial class MainForm : Form
             if(grid.Columns.Contains("ID"))grid.Columns["ID"]!.Width=60;
             if(grid.Columns.Contains("Name"))grid.Columns["Name"]!.Width=210;
             if(grid.Columns.Contains("Description"))grid.Columns["Description"]!.Width=260;
+        };
+        grid.DataError+=(_,e)=>{
+            // Do not show WinForms' generic exception dialog for data display.
+            // Preserve the details for diagnosis without exposing private data.
+            System.Diagnostics.Trace.WriteLine(
+                $"Grid binding error on page {current}, row={e.RowIndex}, col={e.ColumnIndex}: {e.Exception}");
+            bottom.Text="A table value could not be displayed. Please report this to PhoenixLedger support.";
+            e.ThrowException=false;
         };
     }
 
@@ -322,11 +333,71 @@ internal sealed partial class MainForm : Form
         bottom.Text="Local-only C# Lab  •  " + Store.Database;
     }
 
+    /// <summary>
+    /// Bind business list views with explicit text cells. WinForms auto-generated
+    /// image cells can survive binding changes and attempt to cast Int64 IDs
+    /// into System.Drawing.Image when moving from a product page to Customers.
+    /// Recreate columns from the actual query schema for every page.
+    /// </summary>
+    private static void BindTextTable(DataGridView view,DataTable source)
+    {
+        view.SuspendLayout();
+        try
+        {
+            view.DataSource=null;
+            view.AutoGenerateColumns=false;
+            view.Columns.Clear();
+            foreach(DataColumn column in source.Columns)
+            {
+                var dataColumn=new DataGridViewTextBoxColumn
+                {
+                    Name=column.ColumnName,
+                    HeaderText=column.ColumnName,
+                    DataPropertyName=column.ColumnName,
+                    SortMode=DataGridViewColumnSortMode.Automatic
+                };
+                dataColumn.DefaultCellStyle.NullValue="";
+                view.Columns.Add(dataColumn);
+            }
+            view.DataSource=source;
+        }
+        finally {view.ResumeLayout();}
+    }
+
     private void RefreshGrid()
     {
         if(IsWorkspacePage(current))return;
-        grid.DataSource=Repository.Table(CanonicalPage(current),search.Text);
+        BindTextTable(grid,Repository.Table(CanonicalPage(current),search.Text));
         bottom.Text=$"{grid.Rows.Count:N0} records visible  •  C# Lab database: {Store.Database}";
+    }
+
+    internal void SmokeCustomerGridBinding()
+    {
+        // Exercise navigation and REAL formatted values rather than merely
+        // creating forms (the previous smoke check never painted grid cells).
+        foreach(var page in new[]{"Products / Catalog","Suppliers","Customers","Products / Catalog","Customers"})
+        {
+            ShowPage(page);
+            foreach(DataGridViewColumn column in grid.Columns)
+                if(column is not DataGridViewTextBoxColumn)
+                    throw new InvalidOperationException(
+                        $"{page} has a non-text column {column.Name} ({column.GetType().Name}).");
+            foreach(DataGridViewRow row in grid.Rows.Cast<DataGridViewRow>().Take(10))
+                foreach(DataGridViewCell cell in row.Cells)
+                    _=cell.FormattedValue; // catches invalid Int64 -> Image conversions
+        }
+        var fixture=new DataTable();
+        fixture.Columns.Add("ID",typeof(long));
+        fixture.Columns.Add("Name",typeof(string));
+        fixture.Columns.Add("Image",typeof(string));
+        fixture.Rows.Add(long.MaxValue,"Grid formatting test","Yes");
+        BindTextTable(grid,fixture);
+        if(grid.Rows.Count!=1 || grid.Columns.Cast<DataGridViewColumn>()
+            .Any(x=>x is not DataGridViewTextBoxColumn))
+            throw new InvalidOperationException("Grid fixture was not bound as text.");
+        foreach(DataGridViewCell cell in grid.Rows[0].Cells)
+            _=cell.FormattedValue;
+        ShowPage("Customers");
     }
     private long SelectedId()
     {
@@ -370,9 +441,10 @@ internal sealed partial class MainForm : Form
         var detail=Repository.Details(CanonicalPage(current),id);
         using var f=new Form {Text=$"{current} #{id} — Line Items (read-only)",Width=950,Height=620,
             StartPosition=FormStartPosition.CenterParent,BackColor=Canvas,Font=new Font("Segoe UI",10)};
-        var g=new DataGridView{Dock=DockStyle.Fill,DataSource=detail,ReadOnly=true,RowHeadersVisible=false,
+        var g=new DataGridView{Dock=DockStyle.Fill,ReadOnly=true,RowHeadersVisible=false,
             AllowUserToAddRows=false,AutoSizeColumnsMode=DataGridViewAutoSizeColumnsMode.Fill,
             BackgroundColor=Color.White,SelectionMode=DataGridViewSelectionMode.FullRowSelect};
+        BindTextTable(g,detail);
         var header=new Label{Dock=DockStyle.Top,Height=60,Text=$"{current} #{id} — {detail.Rows.Count} line items",
             Font=new Font("Segoe UI",16,FontStyle.Bold),Padding=new Padding(18,15,0,0),ForeColor=Ink};
         f.Controls.Add(g);f.Controls.Add(header);f.ShowDialog(this);
