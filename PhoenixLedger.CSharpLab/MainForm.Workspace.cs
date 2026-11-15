@@ -76,6 +76,7 @@ internal sealed partial class MainForm
             command("&Add record",AddCurrentRecord,Keys.Control|Keys.N),
             command("&Edit selected record",()=>EditSelectedCurrent(),Keys.Control|Keys.Shift|Keys.E),
             command("Delete selected expense",DeleteSelectedExpense),
+            command("Bulk edit products...",OpenBulkProductEditor),
             new ToolStripSeparator(),
             command("Copy selected cell",CopySelectedCell,Keys.Control|Keys.C),
             command("&Find / Search",()=>{if(!searchPanel.Visible)ShowPage("Products / Catalog");search.Focus();},Keys.Control|Keys.F),
@@ -92,6 +93,7 @@ internal sealed partial class MainForm
         view.DropDownItems.Add(command("&Restore window",()=>WindowState=FormWindowState.Normal));
 
         var tools=submenu("&Tools",
+            command("Bulk edit products...",OpenBulkProductEditor),
             command("Scan / adjust inventory...",()=>{ShowPage("Products / Catalog");Adjust();}),
             command("Inventory movement history",()=>ShowPage("Inventory History")),
             command("Business &reports",()=>ShowPage("Reports")),
