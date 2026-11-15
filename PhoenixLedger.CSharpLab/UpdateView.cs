@@ -177,7 +177,7 @@ internal sealed class UpdateView : UserControl
             status.Text = "Installer verified. Closing PhoenixLedger to install the update " +
                           "into the original selected folder...";
             var form = FindForm() ?? throw new InvalidOperationException("Application window not found.");
-            UpdateService.LaunchInstallerAndExit(form, installer);
+            UpdateService.LaunchInstallerAndExit(form, installer, update);
         }
         catch (Exception ex)
         {

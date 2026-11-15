@@ -1,3 +1,12 @@
+# PhoenixLedger C# Lab v0.3.1 — Automatic update reliability
+
+Fixes the Windows error “the process cannot access the file because it is being used by another process.” In earlier versions, the downloaded installer was renamed while its SHA-256 read handle was still open. The verification handle is now closed before the rename.
+
+Updates are handed off to a **standalone update agent**, copied outside the chosen installation directory to %LOCALAPPDATA%\\PhoenixLedgerCSharpLab\\updates. It verifies the package again, waits for the original application process to exit, runs Setup in the same folder and installation mode, waits for success, then launches the updated application exactly once. The installer no longer launches a second copy during silent upgrades.
+
+**One-time manual repair:** Versions up to v0.3.0 contain the file-handle bug and cannot reliably install this fix through their own updater. Download and run v0.3.1 Setup once over the existing install (choose the same folder and install mode). Updates *after* v0.3.1 should use the corrected built-in update mechanism. The Windows installer and GitHub release are produced by GitHub Actions.
+
+---
 # PhoenixLedger C# Lab v0.3.0 — Python-inspired workspace
 
 This experimental C# application retains its separate data in %LOCALAPPDATA%\PhoenixLedgerCSharpLab. It never updates the Python application's database in place.
