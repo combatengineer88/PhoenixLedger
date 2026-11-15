@@ -168,11 +168,11 @@ internal static class FinancialOperations
         if(lines.Any(x=>x.Quantity<=0||x.UnitCents<0))
             throw new InvalidOperationException("PO quantities must be positive and costs cannot be negative.");
         using var db=Store.Open();using var tx=db.BeginTransaction();
-        if(Scalar(db,tx,"SELECT count(*) FROM suppliers WHERE id=@id",("id",supplierId))!=1)
+        if(Scalar(db,tx,"SELECT count(*) FROM suppliers WHERE id=@id AND is_archived=0",("id",supplierId))!=1)
             throw new InvalidOperationException("Supplier not found.");
         foreach(var item in lines)
         {
-            if(Scalar(db,tx,"SELECT count(*) FROM products WHERE id=@id",("id",item.ProductId))!=1)
+            if(Scalar(db,tx,"SELECT count(*) FROM products WHERE id=@id AND is_archived=0",("id",item.ProductId))!=1)
                 throw new InvalidOperationException("A selected product no longer exists.");
         }
         long total=checked(lines.Sum(x=>checked(x.Quantity*x.UnitCents)));
@@ -209,10 +209,10 @@ internal static class FinancialOperations
         if(status is not ("Draft" or "Open")||
            Scalar(db,tx,"SELECT count(*) FROM po_items WHERE po_id=@p AND received_qty>0",("p",poId))>0)
             throw new InvalidOperationException("Only unreceived Draft/Open purchase orders can be edited.");
-        if(Scalar(db,tx,"SELECT count(*) FROM suppliers WHERE id=@s",("s",supplierId))!=1)
+        if(Scalar(db,tx,"SELECT count(*) FROM suppliers WHERE id=@s AND is_archived=0",("s",supplierId))!=1)
             throw new InvalidOperationException("Supplier is not available.");
         foreach(var item in lines)
-            if(Scalar(db,tx,"SELECT count(*) FROM products WHERE id=@p",("p",item.ProductId))!=1)
+            if(Scalar(db,tx,"SELECT count(*) FROM products WHERE id=@p AND is_archived=0",("p",item.ProductId))!=1)
                 throw new InvalidOperationException("A product is no longer available.");
         long total=checked(lines.Sum(x=>checked(x.Quantity*x.UnitCents)));
         Execute(db,tx,"""
