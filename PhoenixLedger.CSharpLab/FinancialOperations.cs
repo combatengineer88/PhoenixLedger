@@ -149,6 +149,61 @@ internal static class FinancialOperations
         return po;
     }
 
+    public static (long SupplierId,DateTime Date,string Notes,string Status) PurchaseOrderInfo(long id)
+    {
+        using var db=Store.Open();using var c=db.CreateCommand();
+        c.CommandText="SELECT supplier_id,ordered_on,coalesce(notes,''),status FROM purchase_orders WHERE id=@id";
+        c.Parameters.AddWithValue("@id",id);
+        using var r=c.ExecuteReader();
+        if(!r.Read())throw new InvalidOperationException("Purchase order not found.");
+        string date=r.GetString(1);
+        return(r.GetInt64(0),DateTime.TryParse(date,out var parsed)?parsed:DateTime.Today,
+            r.GetString(2),r.GetString(3));
+    }
+
+    public static void EditPurchaseOrder(long poId,long supplierId,IReadOnlyList<PurchaseLine> lines,DateTime on,string notes)
+    {
+        if(lines.Count==0||lines.Any(l=>l.Quantity<=0||l.UnitCents<0))
+            throw new InvalidOperationException("Enter one or more valid purchase order lines.");
+        using var db=Store.Open();using var tx=db.BeginTransaction();
+        string? status;
+        using(var cmd=Command(db,tx,"SELECT status FROM purchase_orders WHERE id=@id",("id",poId)))
+            status=cmd.ExecuteScalar()?.ToString();
+        if(status is not ("Draft" or "Open")||
+           Scalar(db,tx,"SELECT count(*) FROM po_items WHERE po_id=@p AND received_qty>0",("p",poId))>0)
+            throw new InvalidOperationException("Only unreceived Draft/Open purchase orders can be edited.");
+        if(Scalar(db,tx,"SELECT count(*) FROM suppliers WHERE id=@s",("s",supplierId))!=1)
+            throw new InvalidOperationException("Supplier is not available.");
+        foreach(var item in lines)
+            if(Scalar(db,tx,"SELECT count(*) FROM products WHERE id=@p",("p",item.ProductId))!=1)
+                throw new InvalidOperationException("A product is no longer available.");
+        long total=checked(lines.Sum(x=>checked(x.Quantity*x.UnitCents)));
+        Execute(db,tx,"""
+            UPDATE purchase_orders SET supplier_id=@s,ordered_on=@d,notes=@n,total=@t
+            WHERE id=@id
+            """,("s",supplierId),("d",Date(on)),("n",notes),("t",total),("id",poId));
+        Execute(db,tx,"DELETE FROM po_items WHERE po_id=@id",("id",poId));
+        foreach(var item in lines)
+            Execute(db,tx,"""
+                INSERT INTO po_items(po_id,product_id,qty,unit_cost,received_qty)
+                VALUES(@po,@product,@q,@price,0)
+                """,("po",poId),("product",item.ProductId),("q",item.Quantity),("price",item.UnitCents));
+        tx.Commit();
+    }
+
+    public static void CancelPurchaseOrder(long poId)
+    {
+        using var db=Store.Open();using var tx=db.BeginTransaction();
+        if(Scalar(db,tx,"SELECT count(*) FROM po_items WHERE po_id=@id AND received_qty>0",("id",poId))>0)
+            throw new InvalidOperationException("Purchase orders with received merchandise cannot be cancelled.");
+        if(Execute(db,tx,"""
+            UPDATE purchase_orders SET status='Cancelled'
+            WHERE id=@id AND status IN ('Draft','Open')
+            """,("id",poId))!=1)
+            throw new InvalidOperationException("Only unreceived Draft/Open orders can be cancelled.");
+        tx.Commit();
+    }
+
     public static void ApprovePurchaseOrder(long id)
     {
         using var db=Store.Open();using var tx=db.BeginTransaction();
