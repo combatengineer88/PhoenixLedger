@@ -1,8 +1,20 @@
-# PhoenixLedger C# Lab 0.1 — Experimental Windows Edition
+# PhoenixLedger C# Lab 0.2 — Experimental Windows Edition
 
 **A SEPARATE editable C# / Windows Forms project, NOT an upgrade to the Python PhoenixLedger application.**
 
 This is a functional starter edition for testing C# development and working on your data without making changes to the existing Python program. It intentionally does **not** replicate every PhoenixLedger feature yet.
+
+## Windows installer and built-in updates (v0.2.0)
+
+**Normal installation (recommended):** Download `PhoenixLedger-CSharpLab-Setup.exe` from the latest [GitHub Release](https://github.com/combatengineer88/PhoenixLedger/releases/latest). Run it to choose your installation directory; the default is `%LOCALAPPDATA%\Programs\PhoenixLedger CSharpLab`. No .NET SDK or separate runtime is required. The installer is per-user (no administrator privileges by default) and supports any location where your Windows account has write access. It installs Start Menu shortcuts, optionally a desktop shortcut, and an entry in Installed Apps for uninstallation. This remains independent from the Python PhoenixLedger program.
+
+**Updating:** Open **Updates** in the application. It checks the latest stable GitHub Release, compares version numbers, and offers **Download and install update**. The installer is downloaded to `%LOCALAPPDATA%\PhoenixLedgerCSharpLab\updates` and checked against the SHA-256 digest published by GitHub. The program closes, and the installer silently updates the same installation directory and relaunches the app. No manual ZIP extraction or file replacement is needed. The `InstallDir` setting recorded by the installer and the running application directory must agree before an automatic update can be applied.
+
+**Options:** Checking for releases on startup is enabled by default. Automatically **installing** an available update on startup is an **opt-in** checkbox under **Updates**; otherwise installation is initiated using the Update button. An unpacked/portable source build can check releases but cannot overwrite itself; install a setup release first. If GitHub is unavailable or no installer release has been published, the application continues working normally. Only complete versioned releases are used, never development branch files.
+
+**Data safety:** The C# Lab SQLite database and imported media remain at `%LOCALAPPDATA%\PhoenixLedgerCSharpLab` outside the installed application folder; normal updates never touch the database or the existing Python installation. Back up important data as usual. The new C# application is still experimental.
+
+**CI and publishing:** Every push or pull request builds the WinForms app and the Inno Setup installer on GitHub-hosted Windows. A successful push to `main` additionally creates a GitHub Release named after the version in `PhoenixLedger.CSharpLab.csproj` (for example, `v0.2.0`) and attaches `PhoenixLedger-CSharpLab-Setup.exe`, but only if that version does not already exist. Bump the project version before releasing each subsequent update. Do **not** reuse release tags or overwrite published installers. If a release already exists, the workflow leaves it unchanged.
 
 ## What you can do now
 
@@ -18,7 +30,7 @@ This is a functional starter edition for testing C# development and working on y
 
 ## What is not implemented in this C# experiment
 
-This lab is **not** feature-equivalent to Python PhoenixLedger. It currently does not provide production-ready login/recovery, invoice or PO creation, receiving, supplier payments, credit accounts, the visual PDF template editor, reports, barcode sticker printing, or the full updater. Purchase orders and sales documents are read-only by design. Do not use the lab as your sole business system.
+This lab is **not** feature-equivalent to Python PhoenixLedger. It currently does not provide production-ready login/recovery, invoice or PO creation, receiving, supplier payments, credit accounts, the visual PDF template editor, reports, barcode sticker printing, or production-grade release signing. Purchase orders and sales documents are read-only by design. Do not use the lab as your sole business system.
 
 ## Installation & running
 
@@ -59,11 +71,11 @@ Quantities and money values are validated and the import is committed as one tra
 
 This repository contains the **independent C# Windows Forms experimental edition**, not the Python PhoenixLedger application. The CI workflow in `.github/workflows/build-csharp-lab.yml` runs on pushes to `main`, pull requests to `main`, or from **Actions → Build PhoenixLedger C# Lab → Run workflow**.
 
-The workflow restores the project with .NET 10 on a hosted Windows runner, compiles the application, then publishes a **self-contained Windows x64 build**. When the workflow succeeds, open the workflow run and download the `PhoenixLedger-CSharpLab-v0.1.0-win-x64` artifact under **Artifacts**. Extract the downloaded ZIP and launch `PhoenixLedger.CSharpLab.exe` on a Windows x64 computer.
+The workflow restores the project with .NET 10 on a hosted Windows runner, compiles the application, then publishes a **self-contained Windows x64 build**. When the workflow succeeds, open the workflow run and download the `PhoenixLedger-CSharpLab-Windows-Installer` (recommended) or `PhoenixLedger-CSharpLab-Portable-win-x64` (portable) artifact under **Artifacts**. Extract the downloaded ZIP and launch `PhoenixLedger.CSharpLab.exe` on a Windows x64 computer.
 
 A self-contained build does not require installing the .NET runtime, but it has not been tested on a Windows desktop in this environment. Never use the experimental app against your only copy of production data.
 
-The downloadable Actions artifact is a build artifact, **not** an installer and **not** an automatic updater. The existing Python PhoenixLedger release workflow remains unchanged.
+The Windows Installer artifact contains the complete selectable-folder setup. Successful main-branch builds publish versioned installer Releases for the in-app updater. The existing Python PhoenixLedger release workflow remains unchanged.
 
 You can also keep the project locally and use Visual Studio without using GitHub at all.
 
