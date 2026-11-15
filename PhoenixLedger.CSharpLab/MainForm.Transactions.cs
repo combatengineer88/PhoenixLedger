@@ -13,8 +13,8 @@ internal sealed partial class MainForm
         using var db=Store.Open();using var cmd=db.CreateCommand();
         cmd.CommandText=table switch
         {
-            "suppliers"=>"SELECT id,name FROM suppliers ORDER BY name",
-            "products"=>"SELECT id,sku || '  —  ' || name FROM products ORDER BY name",
+            "suppliers"=>"SELECT id,name FROM suppliers WHERE is_archived=0 ORDER BY name",
+            "products"=>"SELECT id,sku || '  —  ' || name FROM products WHERE is_archived=0 ORDER BY name",
             _=>throw new InvalidOperationException("Unsupported table.")
         };
         using var r=cmd.ExecuteReader();var list=new List<Option>();
