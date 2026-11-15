@@ -40,6 +40,26 @@ internal static class Store
         Directory.CreateDirectory(Backups);
         bool created = !File.Exists(Database);
         using var conn = Open();
+        if(!created)
+        {
+            using var probe=conn.CreateCommand();
+            probe.CommandText="SELECT count(*) FROM pragma_table_info('customers') WHERE name='is_archived'";
+            if(Convert.ToInt64(probe.ExecuteScalar()??0L)==0)
+            {
+                // Back up the entire existing Lab database once before adding
+                // archive columns. No backup is necessary on later launches.
+                string file=Path.Combine(Backups,
+                    $"lab_before_archive_v0.4.3_{DateTime.Now:yyyyMMdd_HHmmss_fff}.db");
+                using var target=new SqliteConnection(new SqliteConnectionStringBuilder{
+                    DataSource=file,Mode=SqliteOpenMode.ReadWriteCreate}.ToString());
+                target.Open();
+                conn.BackupDatabase(target);
+                using var integrity=target.CreateCommand();
+                integrity.CommandText="PRAGMA quick_check";
+                if(!string.Equals(integrity.ExecuteScalar()?.ToString(),"ok",StringComparison.OrdinalIgnoreCase))
+                    throw new IOException("Archive migration backup failed integrity verification.");
+            }
+        }
         Schema(conn);
         if (created) Seed(conn);
         else
