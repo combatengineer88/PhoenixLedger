@@ -302,8 +302,13 @@ internal static class FinancialOperations
         Execute(db,tx,"INSERT INTO payments(document_id,paid_on,amount,method) VALUES(@id,@d,@a,@m)",
             ("id",invoiceId),("d",Date(when)),("a",amount),("m",method));
         long pid=NewId(db,tx);
-        Post(db,tx,when,$"Payment received for invoice #{invoiceId}","lab_invoice_payment",pid,
-            ("Cash",amount,0),("Accounts Receivable",0,amount));
+        // Imported Python databases have an AFTER INSERT payment trigger that
+        // posts the legacy journal automatically. Do not post it twice.
+        bool triggerPosted=BusinessData.HasTable(db,"journal") &&
+            Scalar(db,tx,"SELECT count(*) FROM journal WHERE source_type='payment' AND source_id=@id",("id",pid))>0;
+        if(!triggerPosted)
+            Post(db,tx,when,$"Payment received for invoice #{invoiceId}","lab_invoice_payment",pid,
+                ("Cash",amount,0),("Accounts Receivable",0,amount));
         Execute(db,tx,"UPDATE documents SET status=@status WHERE id=@id",
             ("status",due==amount?"Paid":"Partially Paid"),("id",invoiceId));
         tx.Commit();
