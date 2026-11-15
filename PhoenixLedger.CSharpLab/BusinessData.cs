@@ -68,19 +68,21 @@ internal static class BusinessData
                 SELECT sku AS SKU,name AS Product,qty AS OnHand,
                        reorder_point AS ReorderAt,reorder_qty AS ReorderQty,
                        COALESCE(stock_mode,'stocked') AS StockMode
-                FROM products WHERE stock_mode='stocked' AND qty<=reorder_point
+                FROM products WHERE is_archived=0 AND stock_mode='stocked' AND qty<=reorder_point
                 ORDER BY qty,name
                 """,
             "Supplier product catalog" => """
                 SELECT s.name AS Supplier,p.sku AS SKU,p.name AS Product,
                        printf('$%.2f',p.cost/100.0) AS ItemCost,
-                       p.qty AS Stock
+                       p.qty AS Stock,
+                       CASE WHEN p.is_archived=1 THEN 'Archived' ELSE 'Active' END AS Status
                 FROM products p LEFT JOIN suppliers s ON s.id=p.supplier_id
                 ORDER BY s.name,p.name
                 """,
             "Customer sales totals" => """
                 SELECT c.name AS Customer,count(d.id) AS Invoices,
-                       printf('$%.2f',coalesce(sum(d.total),0)/100.0) AS Billed
+                       printf('$%.2f',coalesce(sum(d.total),0)/100.0) AS Billed,
+                       CASE WHEN c.is_archived=1 THEN 'Archived' ELSE 'Active' END AS Status
                 FROM customers c LEFT JOIN documents d
                      ON d.customer_id=c.id AND d.kind='Invoice'
                 GROUP BY c.id ORDER BY sum(d.total) DESC
