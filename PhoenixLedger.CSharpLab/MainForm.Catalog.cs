@@ -9,6 +9,23 @@ internal sealed partial class MainForm
     private RoundedButton? restoreButton;
     private RoundedButton? purgeButton;
 
+    internal void SmokeArchivedCatalogNavigation()
+    {
+        foreach(string page in new[]{"Customers","Suppliers","Products / Catalog"})
+        {
+            ShowPage(page);
+            archivedToggle.Checked=true;
+            if(!grid.Columns.Contains("Archived On") ||
+                !grid.Columns["Archived On"]!.Visible)
+                throw new InvalidOperationException("Archived-only column/view was not initialized for "+page);
+            foreach(DataGridViewRow row in grid.Rows.Cast<DataGridViewRow>().Take(5))
+                foreach(DataGridViewCell cell in row.Cells)
+                    _=cell.FormattedValue;
+            archivedToggle.Checked=false;
+        }
+        ShowPage("Home");
+    }
+
     private void AddCatalogButtons()
     {
         archiveButton=AddAction("Archive Selected",ArchiveSelected,false,175);
