@@ -68,6 +68,7 @@ internal static class Program
 
             // Give Windows a brief chance to release loaded DLLs after exit.
             Thread.Sleep(500);
+            EnsureNoOtherPhoenixLedgerProcesses();
             VerifyInstaller(installer, expectedSize, expectedDigest);
 
             var start = new ProcessStartInfo
@@ -76,12 +77,11 @@ internal static class Program
                 WorkingDirectory = Path.GetDirectoryName(installer)!,
                 UseShellExecute = true
             };
-            foreach (string argument in new[]
-            {
-                "/SP-", "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART",
-                "/NORESTARTAPPLICATIONS", mode, "/DIR=" + installationDirectory,
-                "/LOG=" + logPath
-            })
+            // A successful /SILENT setup needs no input, but shows progress.
+            // Do NOT use /SUPPRESSMSGBOXES here: Inno Setup automatically
+            // chooses Abort/Cancel for Retry dialogs, resulting in exit code 5
+            // and hiding the underlying file lock/permission problem.
+            foreach (string argument in BuildSetupArguments(mode, installationDirectory, logPath))
                 start.ArgumentList.Add(argument);
 
             // Inno Setup requests UAC as needed for /ALLUSERS. Do not elevate the
@@ -93,7 +93,8 @@ internal static class Program
                 throw new TimeoutException("Windows Setup did not finish within 20 minutes.");
             if (setup.ExitCode != 0)
                 throw new InvalidOperationException(
-                    $"Windows Setup exited with code {setup.ExitCode}. The update may not have completed.");
+                    DescribeSetupExitCode(setup.ExitCode) +
+                    RelevantLogExcerpt(logPath));
 
             if (!File.Exists(application))
                 throw new FileNotFoundException("Updated application was not found at the original location.", application);
@@ -122,11 +123,85 @@ internal static class Program
             {
                 MessageBox(0,
                     error.Message + "\n\nThe installer was not confirmed successful." +
-                    "\nUpdate log: " + logPath,
+                    "\nUpdate log: " + logPath +
+                    "\n\nIf the issue continues, share the relevant error lines from the log.",
                     "PhoenixLedger update failed", 0x10);
             }
             catch (Exception) { /* Headless/test environments. */ }
             return 1;
+        }
+    }
+
+    private static IReadOnlyList<string> BuildSetupArguments(string mode,string dir,string logPath) =>
+        new[]
+        {
+            "/SP-", "/SILENT", "/NORESTART", "/NORESTARTAPPLICATIONS",
+            mode, "/DIR=" + dir, "/LOG=" + logPath
+        };
+
+    private static string DescribeSetupExitCode(int code) => code switch
+    {
+        2 => "Windows Setup was cancelled before installation began (exit code 2).",
+        5 => "Windows Setup was cancelled or aborted after installation began (exit code 5). " +
+             "This can happen if a file remains locked or a Retry/Abort error is shown.",
+        4 => "Windows Setup encountered a fatal installation error (exit code 4).",
+        7 => "Windows Setup could not proceed past pre-installation checks (exit code 7).",
+        8 => "Windows Setup requires a restart before installation (exit code 8).",
+        _ => $"Windows Setup stopped with exit code {code}."
+    };
+
+    private static string RelevantLogExcerpt(string path)
+    {
+        try
+        {
+            if(!File.Exists(path))return "\nSetup did not write a log file.";
+            string[] details=File.ReadLines(path)
+                .TakeLast(300)
+                .Where(line=>line.Contains("error",StringComparison.OrdinalIgnoreCase)
+                    ||line.Contains("abort",StringComparison.OrdinalIgnoreCase)
+                    ||line.Contains("denied",StringComparison.OrdinalIgnoreCase)
+                    ||line.Contains("cannot",StringComparison.OrdinalIgnoreCase)
+                    ||line.Contains("failed",StringComparison.OrdinalIgnoreCase)
+                    ||line.Contains("sharing violation",StringComparison.OrdinalIgnoreCase))
+                .TakeLast(4).ToArray();
+            return details.Length==0?"\nSee the installer log for details.":
+                "\nInstaller log details:\n"+string.Join("\n",details.Select(x=>x.Length>240?x[..240]+"…":x));
+        }
+        catch(IOException){return "\nInstaller log could not be read.";}
+        catch(UnauthorizedAccessException){return "\nInstaller log could not be accessed.";}
+    }
+
+    private static void EnsureNoOtherPhoenixLedgerProcesses()
+    {
+        // The launched update agent runs outside Program Files. Wait for all
+        // copies of the application, not only the parent PID, to exit before
+        // the installer tries to replace Windows EXEs/DLLs. Never force-kill.
+        DateTime deadline=DateTime.UtcNow.AddSeconds(15);
+        while(true)
+        {
+            Process[] running=Process.GetProcessesByName("PhoenixLedger.CSharpLab");
+            try
+            {
+                if(running.Length==0)return;
+            }
+            finally
+            {
+                foreach(Process process in running)process.Dispose();
+            }
+
+            if(DateTime.UtcNow>=deadline)
+            {
+                int answer=MessageBox(0,
+                    "Another PhoenixLedger C# Lab window is still running.\n\n" +
+                    "Close all PhoenixLedger windows, then click Retry. " +
+                    "Choose Cancel to stop this update; no files will be replaced.",
+                    "PhoenixLedger — close other windows",
+                    0x35); // MB_RETRYCANCEL | MB_ICONWARNING
+                if(answer!=4) // IDRETRY
+                    throw new InvalidOperationException("Update cancelled because PhoenixLedger is still running.");
+                deadline=DateTime.UtcNow.AddSeconds(15);
+            }
+            Thread.Sleep(500);
         }
     }
 
@@ -152,6 +227,14 @@ internal static class Program
             byte[] data=System.Text.Encoding.UTF8.GetBytes("Test updater verification and file handle release.");
             File.WriteAllBytes(file, data);
             VerifyInstaller(file, data.Length, Convert.ToHexString(SHA256.HashData(data)));
+            var arguments=BuildSetupArguments("/ALLUSERS",@"C:\Program Files\PhoenixLedger CSharpLab",
+                Path.Combine(folder,"setup.log"));
+            if(!arguments.Contains("/SILENT") || arguments.Contains("/SUPPRESSMSGBOXES")
+                || arguments.Contains("/VERYSILENT") || !arguments.Contains("/ALLUSERS")
+                || !arguments.Any(arg=>arg.StartsWith("/LOG=",StringComparison.Ordinal)))
+                throw new InvalidOperationException("Installer argument regression check failed.");
+            if(!DescribeSetupExitCode(5).Contains("aborted",StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("Setup exit code 5 should have a useful explanation.");
             string renamed=file+".moved";
             File.Move(file,renamed);
             if (!File.Exists(renamed))

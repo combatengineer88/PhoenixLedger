@@ -104,6 +104,22 @@ jobs:
             throw "Installer executable was not produced."
           }
 
+      - name: Smoke-test the Windows installer in per-user mode
+        shell: pwsh
+        run: |
+          $installer = (Resolve-Path "dist/setup/PhoenixLedger-CSharpLab-Setup.exe").Path
+          $target = Join-Path $env:RUNNER_TEMP "PhoenixLedgerInstallerSmoke"
+          $log = Join-Path $env:RUNNER_TEMP "phoenixledger-installer-smoke.log"
+          $args = @("/SP-", "/VERYSILENT", "/NORESTART", "/NORESTARTAPPLICATIONS", "/CURRENTUSER", "/DIR=$target", "/LOG=$log")
+          $p = Start-Process -FilePath $installer -ArgumentList $args -Wait -PassThru
+          if ($p.ExitCode -ne 0) {
+            if (Test-Path $log) { Get-Content $log -Tail 80 }
+            throw "Smoke installation exited with code $($p.ExitCode)."
+          }
+          if (!(Test-Path (Join-Path $target "PhoenixLedger.CSharpLab.exe"))) {
+            throw "Smoke installer did not place application in the selected directory."
+          }
+
       - name: Upload installable Windows setup
         uses: actions/upload-artifact@v4
         with:
