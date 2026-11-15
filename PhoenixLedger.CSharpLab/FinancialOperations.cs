@@ -31,6 +31,11 @@ internal static class FinancialOperations
                 id INTEGER PRIMARY KEY,journal_id INTEGER NOT NULL REFERENCES lab_fin_journal(id),
                 account TEXT NOT NULL,debit INTEGER NOT NULL DEFAULT 0,credit INTEGER NOT NULL DEFAULT 0,
                 CHECK(debit>=0 AND credit>=0));
+              CREATE TABLE IF NOT EXISTS lab_fin_expense_changes(
+                id INTEGER PRIMARY KEY, expense_id INTEGER NOT NULL,
+                changed_on TEXT NOT NULL, old_amount INTEGER NOT NULL,
+                new_amount INTEGER NOT NULL,old_category TEXT NOT NULL,
+                new_category TEXT NOT NULL,operation TEXT NOT NULL);
               CREATE TABLE IF NOT EXISTS lab_fin_budgets(
                 month TEXT NOT NULL,account TEXT NOT NULL,amount INTEGER NOT NULL,
                 PRIMARY KEY(month,account));
