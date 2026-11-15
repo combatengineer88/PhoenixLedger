@@ -164,7 +164,6 @@ internal static class PdfDocuments
 
     internal static DocumentData ReportData(string title,DataTable table)
     {
-        long total=0;
         var fields=new Dictionary<string,string>{
             ["BusinessName"]=BusinessData.Setting("business_name") is {Length:>0} name?name:"PhoenixLedger C# Lab",
             ["DocumentType"]=title,["DocumentNumber"]="",["Recipient"]="Internal management report",
