@@ -1,5 +1,5 @@
 #ifndef AppVersion
-  #define AppVersion "0.2.1"
+  #define AppVersion "0.3.1"
 #endif
 
 [Setup]
@@ -51,4 +51,6 @@ Name: "{autodesktop}\PhoenixLedger C# Lab"; Filename: "{app}\PhoenixLedger.CShar
 Root: HKA; Subkey: "Software\PhoenixLedger\CSharpLab"; ValueType: string; ValueName: "InstallDir"; ValueData: "{app}"; Flags: uninsdeletekey
 
 [Run]
-Filename: "{app}\PhoenixLedger.CSharpLab.exe"; Flags: nowait runasoriginaluser
+; Only manual interactive installation auto-launches here; silent updates are
+; restarted by the detached UpdateAgent after Setup reports exit code 0.
+Filename: "{app}\PhoenixLedger.CSharpLab.exe"; Flags: nowait runasoriginaluser skipifsilent
