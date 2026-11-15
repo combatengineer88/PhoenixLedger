@@ -17,6 +17,7 @@ internal static class FinancialSmokeTests
         long po=FinancialOperations.CreatePurchaseOrder(supplier,new[]{
             new PurchaseLine(product,10,425)
         },DateTime.Today,"CI financial test",draft:true);
+        FinancialOperations.EditPurchaseOrder(po,supplier,new[]{new PurchaseLine(product,10,425)},DateTime.Today,"Edited CI PO");
         FinancialOperations.ApprovePurchaseOrder(po);
         var line=FinancialOperations.PurchaseLines(po).Single();
         string state=FinancialOperations.Receive(po,new[]{new ReceiptLine(line.Id,4)},DateTime.Today,"Part 1");
