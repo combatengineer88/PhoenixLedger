@@ -51,6 +51,17 @@ internal static class ExcelImporter
         if(!Has(required))throw new InvalidDataException($"A {required} column is required for {entity} import.");
         using var db=Store.Open();using var tx=db.BeginTransaction();
         int created=0,updated=0;
+        void EnsureActive(string table,long id,string label)
+        {
+            if(id<=0)return;
+            using var check=db.CreateCommand();
+            check.Transaction=tx;
+            check.CommandText=$"SELECT is_archived FROM {table} WHERE id=@id";
+            Param(check,"id",id);
+            if(Convert.ToInt64(check.ExecuteScalar()??0L,CultureInfo.InvariantCulture)!=0)
+                throw new InvalidDataException(
+                    $"The import matches archived {label} #{id}. Restore it from View Archived Only before importing.");
+        }
         foreach(var r in rows.Skip(1))
         {
             if(r.IsEmpty())continue;
@@ -73,7 +84,11 @@ internal static class ExcelImporter
                         add.ExecuteNonQuery();using var last=db.CreateCommand();last.Transaction=tx;last.CommandText="SELECT last_insert_rowid()";
                         supplierId=Convert.ToInt64(last.ExecuteScalar(),CultureInfo.InvariantCulture);
                     }
-                    else supplierId=Convert.ToInt64(value,CultureInfo.InvariantCulture);
+                    else
+                    {
+                        supplierId=Convert.ToInt64(value,CultureInfo.InvariantCulture);
+                        EnsureActive("suppliers",supplierId.Value,"supplier");
+                    }
                 }
                 long id=0;
                 using(var lookup=db.CreateCommand())
@@ -82,6 +97,7 @@ internal static class ExcelImporter
                     Param(lookup,"sku",sku);object? value=lookup.ExecuteScalar();
                     if(value is not null)id=Convert.ToInt64(value,CultureInfo.InvariantCulture);
                 }
+                EnsureActive("products",id,"product");
                 long price=PriceInCents(Get(r,"Price","Selling Price")),cost=PriceInCents(Get(r,"Cost","Item Cost","Unit Cost"));
                 int qty=Stock(Get(r,"Qty","Quantity","Stock","On Hand"),0);
                 int reorderQty=Stock(Get(r,"Reorder Qty","Reorder Quantity"),20);
@@ -141,6 +157,7 @@ internal static class ExcelImporter
                     Param(lookup,"name",name);object? value=lookup.ExecuteScalar();
                     if(value is not null)id=Convert.ToInt64(value,CultureInfo.InvariantCulture);
                 }
+                EnsureActive("suppliers",id,"supplier");
                 using var cmd=db.CreateCommand();cmd.Transaction=tx;
                 cmd.CommandText=id==0?
                     "INSERT INTO suppliers(name,contact_name,email,phone,website,address,city,state,zip_code,notes) VALUES(@name,@contact,@email,@phone,@website,@address,@city,@state,@zip,@notes)":
@@ -165,6 +182,7 @@ internal static class ExcelImporter
                     Param(lookup,"key",string.IsNullOrWhiteSpace(email)?name:email);
                     object? v=lookup.ExecuteScalar();if(v is not null)id=Convert.ToInt64(v,CultureInfo.InvariantCulture);
                 }
+                EnsureActive("customers",id,"customer");
                 using var cmd=db.CreateCommand();cmd.Transaction=tx;
                 cmd.CommandText=id==0?
                     "INSERT INTO customers(name,email,phone,address,city,state,zip_code,notes) VALUES(@name,@email,@phone,@address,@city,@state,@zip,@notes)":
