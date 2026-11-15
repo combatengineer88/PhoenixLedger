@@ -8,10 +8,16 @@ internal static class Program
     private static void Main(string[] args)
     {
         bool smoke = args.Any(a=>a.Equals("--smoke-ui", StringComparison.OrdinalIgnoreCase));
+        bool financeSmoke = args.Any(a=>a.Equals("--smoke-finance", StringComparison.OrdinalIgnoreCase));
         ApplicationConfiguration.Initialize();
         try
         {
             Store.Initialize();
+            if(financeSmoke)
+            {
+                FinancialSmokeTests.Run();
+                return;
+            }
             if(smoke)
             {
                 using var form = new MainForm();
@@ -22,7 +28,7 @@ internal static class Program
         }
         catch (Exception ex)
         {
-            if(smoke)
+            if(smoke || financeSmoke)
             {
                 Console.Error.WriteLine(ex);
                 Environment.ExitCode=1;

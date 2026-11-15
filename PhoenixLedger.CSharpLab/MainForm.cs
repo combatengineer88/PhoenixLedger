@@ -35,7 +35,7 @@ internal sealed partial class MainForm : Form
 
     public MainForm()
     {
-        Text="PhoenixLedger C# Lab 0.3 — Python-inspired workspace";
+        Text="PhoenixLedger C# Lab 0.4 — Accounting, Purchasing and PDF Designer";
         Icon=Icon.ExtractAssociatedIcon(Application.ExecutablePath);
         MinimumSize=new Size(950,650);
         Size=new Size(1360,850);
@@ -223,9 +223,30 @@ internal sealed partial class MainForm : Form
             AddAction("Delete Expense",()=>DeleteSelectedExpense(),false,165);
         }
         else if(page=="Accounting")
-            AddAction("View Journal Lines",()=>ViewAccountingLines(),true,200);
-        else if(page is "Purchase Orders" or "Estimates & Invoices")
-            AddAction("View Line Items",()=>ViewDetails(SelectedId()),true);
+        {
+            AddAction("View Journal Lines",()=>ViewAccountingLines(),true,175);
+            AddAction("Add Account",AddChartAccount,false,145);
+            AddAction("Post Journal Entry",EnterManualJournal,false,195);
+            AddAction("Financial Reports",()=>ShowPage("Reports"),false,170);
+            AddAction("Manage Budget",ManageBudget,false,160);
+            AddAction("Bank Statement Entry",EnterBankTransaction,false,190);
+        }
+        else if(page=="Purchase Orders")
+        {
+            AddAction("New Purchase Order",NewPurchaseOrder,true,198);
+            AddAction("Edit PO",EditPurchaseOrder,false,125);
+            AddAction("Cancel PO",CancelPurchaseOrder,false,130);
+            AddAction("Approve Draft",ApprovePurchaseOrder,false,166);
+            AddAction("Receive Items",ReceivePurchaseOrder,false,160);
+            AddAction("Pay Supplier",()=>PayInvoiceOrSupplier(true),false,160);
+            AddAction("Export PO PDF",()=>ExportDocumentPdf("Purchase Order"),false,172);
+        }
+        else if(page=="Estimates & Invoices")
+        {
+            AddAction("Record Invoice Payment",()=>PayInvoiceOrSupplier(false),true,222);
+            AddAction("View Line Items",()=>ViewDetails(SelectedId()),false,170);
+            AddAction("Export Document PDF",()=>ExportDocumentPdf("Selected"),false,215);
+        }
         AddAction("Export Visible CSV",()=>ExportCsv(),false,198);
         AddAction("Refresh",()=>RefreshGrid(),false,126);
         AddAction("Import Database Copy",()=>ImportProductionCopy(),false,205);
@@ -249,8 +270,22 @@ internal sealed partial class MainForm : Form
         }
         else if(page=="Accounting")
             context.Items.Add("View journal lines",null,(_,_)=>Safe(ViewAccountingLines));
-        else if(page is "Purchase Orders" or "Estimates & Invoices")
+        else if(page=="Purchase Orders")
+        {
             context.Items.Add("View line items",null,(_,_)=>Safe(()=>ViewDetails(SelectedId())));
+            context.Items.Add("Edit purchase order",null,(_,_)=>Safe(EditPurchaseOrder));
+            context.Items.Add("Cancel purchase order",null,(_,_)=>Safe(CancelPurchaseOrder));
+            context.Items.Add("Approve draft",null,(_,_)=>Safe(ApprovePurchaseOrder));
+            context.Items.Add("Receive items",null,(_,_)=>Safe(ReceivePurchaseOrder));
+            context.Items.Add("Pay supplier",null,(_,_)=>Safe(()=>PayInvoiceOrSupplier(true)));
+            context.Items.Add("Export PO PDF",null,(_,_)=>Safe(()=>ExportDocumentPdf("Purchase Order")));
+        }
+        else if(page=="Estimates & Invoices")
+        {
+            context.Items.Add("View line items",null,(_,_)=>Safe(()=>ViewDetails(SelectedId())));
+            context.Items.Add("Record invoice payment",null,(_,_)=>Safe(()=>PayInvoiceOrSupplier(false)));
+            context.Items.Add("Export PDF",null,(_,_)=>Safe(()=>ExportDocumentPdf("Selected")));
+        }
         context.Items.Add("Export visible CSV",null,(_,_)=>Safe(ExportCsv));
         grid.ContextMenuStrip=context;
     }
@@ -353,6 +388,7 @@ internal sealed partial class MainForm : Form
             picker.FileName+"\n\nYour live Python PhoenixLedger database will NOT be changed. Continue?",
             "Import read-only snapshot",MessageBoxButtons.YesNo,MessageBoxIcon.Question)!=DialogResult.Yes)return;
         int count=Store.ImportSnapshot(picker.FileName);
+        FinancialOperations.Initialize();
         MessageBox.Show(this,$"The database was copied into the lab successfully.\n{count} media files copied.\n\n"+
             "Your original PhoenixLedger database was not changed.","Snapshot imported",MessageBoxButtons.OK,MessageBoxIcon.Information);
         ShowPage(current);
