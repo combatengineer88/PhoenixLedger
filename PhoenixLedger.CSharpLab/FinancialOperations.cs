@@ -124,6 +124,43 @@ internal static class FinancialOperations
                 ("j",jid),("a",e.account),("d",e.debit),("c",e.credit));
     }
 
+    public static void AddAccount(string name,string code,string type)
+    {
+        name=name.Trim();code=code.Trim();
+        if(name.Length<2||code.Length<3||type is not ("Asset" or "Liability" or "Equity" or "Revenue" or "Expense"))
+            throw new InvalidOperationException("Enter an account name, a unique code and a valid account category.");
+        using var db=Store.Open();
+        Execute(db,null,"INSERT INTO lab_fin_accounts(name,code,type) VALUES(@name,@code,@type)",
+            ("name",name),("code",code),("type",type));
+    }
+
+    public static void ManualJournal(DateTime when,string memo,
+        IReadOnlyList<(string Account,long Debit,long Credit)> entries)
+    {
+        if(string.IsNullOrWhiteSpace(memo)||entries.Count<2)
+            throw new InvalidOperationException("Provide a memo and at least two journal lines.");
+        if(entries.Any(x=>string.IsNullOrWhiteSpace(x.Account)||x.Debit<0||x.Credit<0||
+            (x.Debit>0&&x.Credit>0)))
+            throw new InvalidOperationException("Each journal line needs one nonnegative debit or credit.");
+        long debits=entries.Sum(x=>x.Debit),credits=entries.Sum(x=>x.Credit);
+        if(debits!=credits||debits<=0)throw new InvalidOperationException("Journal debits and credits must balance.");
+        using var db=Store.Open();using var tx=db.BeginTransaction();
+        foreach(var entry in entries)
+        {
+            if(Scalar(db,tx,"SELECT count(*) FROM lab_fin_accounts WHERE name=@a",("a",entry.Account))!=1)
+                throw new InvalidOperationException("Unknown account: "+entry.Account);
+        }
+        Execute(db,tx,"""
+            CREATE TABLE IF NOT EXISTS lab_fin_manual_ids(
+                id INTEGER PRIMARY KEY,memo TEXT NOT NULL)
+            """);
+        Execute(db,tx,"INSERT INTO lab_fin_manual_ids(memo) VALUES(@memo)",("memo",memo.Trim()));
+        long id=NewId(db,tx);
+        Post(db,tx,when,memo.Trim(),"lab_manual_journal",id,
+            entries.Select(x=>(x.Account,x.Debit,x.Credit)).ToArray());
+        tx.Commit();
+    }
+
     public static long CreatePurchaseOrder(long supplierId,IReadOnlyList<PurchaseLine> lines,
         DateTime when,string notes,bool draft)
     {
