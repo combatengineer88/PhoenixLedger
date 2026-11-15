@@ -111,6 +111,8 @@ internal static class Store
         foreach (var (table, columns) in new (string, (string, string)[])[]
         {
             ("products", new (string, string)[] {
+                ("is_archived", "INTEGER NOT NULL DEFAULT 0 CHECK(is_archived IN (0,1))"),
+                ("archived_at", "TEXT DEFAULT NULL"),
                 ("barcode", "TEXT DEFAULT ''"), ("supplier_id", "INTEGER"),
                 ("image_path", "TEXT DEFAULT ''"), ("barcode_image_path", "TEXT DEFAULT ''"),
                 ("reorder_point", "INTEGER NOT NULL DEFAULT 5"), ("reorder_qty", "INTEGER NOT NULL DEFAULT 20"),
@@ -118,10 +120,14 @@ internal static class Store
                 ("min_order_qty", "INTEGER NOT NULL DEFAULT 1"), ("stock_mode", "TEXT NOT NULL DEFAULT 'stocked'"),
                 ("bin_location", "TEXT NOT NULL DEFAULT ''"), ("inventory_unit_cost", "INTEGER DEFAULT NULL") }),
             ("suppliers", new (string, string)[] {
+                ("is_archived", "INTEGER NOT NULL DEFAULT 0 CHECK(is_archived IN (0,1))"),
+                ("archived_at", "TEXT DEFAULT NULL"),
                 ("contact_name", "TEXT DEFAULT ''"), ("website", "TEXT DEFAULT ''"),
                 ("city", "TEXT DEFAULT ''"), ("state", "TEXT DEFAULT ''"),
                 ("zip_code", "TEXT DEFAULT ''"), ("notes", "TEXT DEFAULT ''") }),
             ("customers", new (string, string)[] {
+                ("is_archived", "INTEGER NOT NULL DEFAULT 0 CHECK(is_archived IN (0,1))"),
+                ("archived_at", "TEXT DEFAULT NULL"),
                 ("city", "TEXT DEFAULT ''"), ("state", "TEXT DEFAULT ''"),
                 ("zip_code", "TEXT DEFAULT ''"), ("tax_exempt", "INTEGER NOT NULL DEFAULT 0") })
         })
@@ -134,7 +140,22 @@ internal static class Store
             foreach (var (name, def) in columns)
                 if (!found.Contains(name)) Exec(db, $"ALTER TABLE {table} ADD COLUMN {name} {def}");
         }
-        Exec(db, "CREATE INDEX IF NOT EXISTS idx_lab_stock_product ON lab_stock_events(product_id,id DESC)");
+        Exec(db, """
+            CREATE TABLE IF NOT EXISTS lab_catalog_archive_events(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                entity_type TEXT NOT NULL,
+                entity_id INTEGER NOT NULL,
+                display_name TEXT NOT NULL,
+                action TEXT NOT NULL CHECK(action IN ('Archive','Restore')),
+                recorded_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS idx_lab_catalog_archive_events
+              ON lab_catalog_archive_events(entity_type,entity_id,id DESC);
+            CREATE INDEX IF NOT EXISTS idx_lab_customers_archived ON customers(is_archived,name);
+            CREATE INDEX IF NOT EXISTS idx_lab_suppliers_archived ON suppliers(is_archived,name);
+            CREATE INDEX IF NOT EXISTS idx_lab_products_archived ON products(is_archived,name);
+            CREATE INDEX IF NOT EXISTS idx_lab_stock_product ON lab_stock_events(product_id,id DESC);
+            """);
     }
 
     private static void Seed(SqliteConnection db)
