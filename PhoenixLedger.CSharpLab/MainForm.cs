@@ -14,9 +14,10 @@ internal sealed class MainForm : Form
     private static readonly Color Accent=Color.FromArgb(35,116,199);
     private static readonly Color Canvas=Color.FromArgb(241,246,251);
     private static readonly Color Muted=Color.FromArgb(103,119,138);
-    private static readonly string[] Pages={"Home","Products","Suppliers","Customers","Purchase Orders","Sales Documents","Inventory History"};
+    private static readonly string[] Pages={"Home","Products","Suppliers","Customers","Purchase Orders","Sales Documents","Inventory History","Updates"};
 
     private readonly Dictionary<string,RoundedButton> tabs=new();
+    private readonly UpdateView updateView = new();
     private readonly Panel content=new(){Dock=DockStyle.Fill,BackColor=Canvas,Padding=new Padding(16,8,16,12)};
     private readonly Label sectionTitle=new(){Dock=DockStyle.Top,Height=44,ForeColor=Ink,
         Font=new Font("Segoe UI",17,FontStyle.Bold),TextAlign=ContentAlignment.MiddleLeft};
@@ -33,7 +34,7 @@ internal sealed class MainForm : Form
 
     public MainForm()
     {
-        Text="PhoenixLedger C# Lab 0.1 — Separate Experimental Edition";
+        Text="PhoenixLedger C# Lab 0.2 — Separate Experimental Edition";
         Icon=Icon.ExtractAssociatedIcon(Application.ExecutablePath);
         MinimumSize=new Size(950,650);
         Size=new Size(1360,850);
@@ -78,6 +79,7 @@ internal sealed class MainForm : Form
         shell.Controls.Add(content,0,2);
         shell.Controls.Add(bottom,0,3);
         Controls.Add(shell);
+        content.Controls.Add(updateView);
         content.Controls.Add(dashboard);
         content.Controls.Add(grid);
         content.Controls.Add(actions);
@@ -92,6 +94,8 @@ internal sealed class MainForm : Form
             AutoSize=true,Location=new Point(402,13),Font=new Font("Segoe UI",9)});
         ConfigureGrid();
         FormClosed+=(_,_)=>headerImage?.Dispose();
+        updateView.UpdateAvailable += (_,_)=>ShowPage("Updates");
+        Shown += async (_,_)=>await updateView.CheckOnStartupAsync();
         ShowPage("Home");
     }
 
@@ -167,9 +171,18 @@ internal sealed class MainForm : Form
         actions.Controls.Clear();
         search.Text="";
         bool isHome=page=="Home";
-        searchPanel.Visible=!isHome;
-        grid.Visible=!isHome;
+        bool isUpdates=page=="Updates";
+        searchPanel.Visible=!isHome && !isUpdates;
+        grid.Visible=!isHome && !isUpdates;
         dashboard.Visible=isHome;
+        updateView.Visible=isUpdates;
+        if(isUpdates)
+        {
+            actions.Height=0;
+            updateView.BringToFront();
+            bottom.Text="Updates use GitHub Releases  •  Lab data remains in " + Store.Root;
+            return;
+        }
         if(isHome)
         {
             actions.Height=57;
