@@ -11,7 +11,7 @@ internal sealed partial class MainForm
         var split=new SplitContainer
         {
             Dock=DockStyle.Fill,Orientation=Orientation.Vertical,
-            FixedPanel=FixedPanel.Panel1,SplitterWidth=6,
+            FixedPanel=FixedPanel.Panel1,SplitterWidth=6,Size=new Size(1100,700),
             BackColor=Color.FromArgb(226,234,243),BorderStyle=BorderStyle.None
         };
         split.SplitterDistance=255;
