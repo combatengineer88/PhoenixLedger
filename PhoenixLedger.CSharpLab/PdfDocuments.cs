@@ -76,7 +76,8 @@ public sealed class PdfLayout
     }
     public void Validate()
     {
-        if(Paper is not ("Letter" or "A4"))throw new InvalidOperationException("Choose Letter or A4 paper.");
+        if(Paper is not ("Letter" or "A4" or "Legal" or "Letter Landscape" or "A4 Landscape"))
+            throw new InvalidOperationException("Choose Letter, Legal, A4 or a landscape paper format.");
         if(Elements.Count>150)throw new InvalidOperationException("Too many PDF design elements.");
         foreach(var item in Elements)
         {
@@ -185,7 +186,10 @@ internal static class PdfDocuments
         PdfPage AddPage()
         {
             var page=doc.AddPage();
-            page.Size=layout.Paper=="A4"?PageSize.A4:PageSize.Letter;
+            page.Size=layout.Paper.StartsWith("A4",StringComparison.Ordinal)?PageSize.A4:
+                layout.Paper=="Legal"?PageSize.Legal:PageSize.Letter;
+            if(layout.Paper.Contains("Landscape",StringComparison.Ordinal))
+                page.Orientation=PageOrientation.Landscape;
             return page;
         }
         var first=AddPage();
