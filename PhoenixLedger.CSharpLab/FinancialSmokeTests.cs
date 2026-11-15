@@ -102,5 +102,88 @@ internal static class FinancialSmokeTests
             if(new FileInfo(filename).Length<100)throw new Exception("PDF preview failed: "+kind);
             File.Delete(filename);
         }
+        // Archived entries stay in the database, preserve their original IDs,
+        // and remain joined to invoices, purchase orders and accounting reports.
+        CatalogArchive.SetArchived("Customers",customer,true);
+        if(Repository.Table("Customers").Rows.Cast<System.Data.DataRow>()
+            .Any(r=>Convert.ToInt64(r["ID"])==customer))
+            throw new Exception("Archived customer visible in the active catalog.");
+        if(!Repository.Table("Customers","",archived:true).Rows.Cast<System.Data.DataRow>()
+            .Any(r=>Convert.ToInt64(r["ID"])==customer))
+            throw new Exception("Archived customer missing from archived-only view.");
+        var customerReport=BusinessData.Report("Customer sales totals");
+        if(!customerReport.Rows.Cast<System.Data.DataRow>()
+            .Any(r=>r["Customer"]?.ToString()=="Demo Customer"))
+            throw new Exception("Historical customer sales disappeared after archiving.");
+        try
+        {
+            CatalogArchive.Purge("Customers",customer);
+            throw new Exception("Purge incorrectly deleted a customer with invoices.");
+        }
+        catch(InvalidOperationException e) when(e.Message.Contains("historical") ||
+            e.Message.Contains("linked")) { }
+        CatalogArchive.SetArchived("Customers",customer,false);
+
+        CatalogArchive.SetArchived("Suppliers",supplier,true);
+        try
+        {
+            FinancialOperations.CreatePurchaseOrder(supplier,new[]{new PurchaseLine(product,1,100)},
+                DateTime.Today,"Should be denied",draft:true);
+            throw new Exception("Archived supplier accepted on a new purchase order.");
+        }
+        catch(InvalidOperationException e) when(e.Message.Contains("not found")) { }
+        try
+        {
+            CatalogArchive.Purge("Suppliers",supplier);
+            throw new Exception("Supplier with linked purchase orders was purged.");
+        }
+        catch(InvalidOperationException e) when(e.Message.Contains("historical") ||
+            e.Message.Contains("linked")) { }
+        CatalogArchive.SetArchived("Suppliers",supplier,false);
+
+        CatalogArchive.SetArchived("Products",product,true);
+        try
+        {
+            CatalogArchive.Purge("Products",product);
+            throw new Exception("Product with stock and history was purged.");
+        }
+        catch(InvalidOperationException e) when(e.Message.Contains("inventory")) { }
+        CatalogArchive.SetArchived("Products",product,false);
+
+        string suffix=Guid.NewGuid().ToString("N")[..10];
+        FinancialOperations.Execute(db,null,"INSERT INTO customers(name) VALUES(@n)",
+            ("n","Unused Customer "+suffix));
+        long disposableCustomer=FinancialOperations.Scalar(db,null,"SELECT max(id) FROM customers");
+        FinancialOperations.Execute(db,null,"INSERT INTO suppliers(name) VALUES(@n)",
+            ("n","Unused Supplier "+suffix));
+        long disposableSupplier=FinancialOperations.Scalar(db,null,"SELECT max(id) FROM suppliers");
+        FinancialOperations.Execute(db,null,"INSERT INTO products(sku,name,qty) VALUES(@sku,@name,0)",
+            ("sku","ARCHIVE-TEST-"+suffix),("name","Unused Product "+suffix));
+        long disposableProduct=FinancialOperations.Scalar(db,null,"SELECT max(id) FROM products");
+
+        foreach(var (section,id) in new[]{
+            ("Customers",disposableCustomer),
+            ("Suppliers",disposableSupplier),
+            ("Products",disposableProduct)
+        })
+        {
+            CatalogArchive.SetArchived(section,id,true);
+            var info=CatalogArchive.Info(section,id);
+            if(!info.CanPurge)throw new Exception("Unreferenced "+section+" cannot be purged.");
+            CatalogArchive.Purge(section,id);
+            if(CatalogArchive.IsCatalog(section) &&
+                Repository.Table(section).Rows.Cast<System.Data.DataRow>()
+                    .Any(row=>Convert.ToInt64(row["ID"])==id))
+                throw new Exception("Purged record remains in active list.");
+            string table=section switch{"Customers"=>"customers","Suppliers"=>"suppliers",_=>"products"};
+            if(FinancialOperations.Scalar(db,null,$"SELECT count(*) FROM {table} WHERE id=@id",("id",id))!=0)
+                throw new Exception("Purged catalog entry still exists.");
+            if(FinancialOperations.Scalar(db,null,"""
+                SELECT count(*) FROM lab_catalog_archive_events
+                WHERE entity_type=@section AND entity_id=@id AND action='Purge'
+                """,("section",section),("id",id))!=1)
+                throw new Exception("Purge audit entry missing.");
+        }
+
     }
 }

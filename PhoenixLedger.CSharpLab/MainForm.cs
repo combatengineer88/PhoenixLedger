@@ -24,6 +24,8 @@ internal sealed partial class MainForm : Form
         Font=new Font("Segoe UI",17,FontStyle.Bold),TextAlign=ContentAlignment.MiddleLeft};
     private readonly Panel searchPanel=new(){Dock=DockStyle.Top,Height=49,BackColor=Canvas};
     private readonly TextBox search=new(){Width=310,Font=new Font("Segoe UI",10.5f),BorderStyle=BorderStyle.FixedSingle};
+    private readonly CheckBox archivedToggle=new(){Text="View Archived Only",AutoSize=true,
+        Left=805,Top=12,Font=new Font("Segoe UI",10,FontStyle.Bold)};
     private readonly FlowLayoutPanel actions=new(){Dock=DockStyle.Top,Height=99,Padding=new Padding(0,6,0,4),
         WrapContents=true,AutoScroll=true,BackColor=Canvas};
     private readonly DataGridView grid=new();
@@ -95,6 +97,14 @@ internal sealed partial class MainForm : Form
         var searchLabel=new Label{Text="Search",ForeColor=Muted,AutoSize=true,Location=new Point(1,13)};
         searchPanel.Controls.Add(searchLabel);
         search.Location=new Point(68,10);searchPanel.Controls.Add(search);
+        searchPanel.Controls.Add(archivedToggle);
+        archivedToggle.CheckedChanged+=(_,_)=>{
+            if(CatalogArchive.IsCatalog(CanonicalPage(current)))
+            {
+                RefreshGrid();
+                UpdateArchiveButtons();
+            }
+        };
         search.TextChanged+=(_,_)=>{if(!IsWorkspacePage(current))RefreshGrid();};
         searchPanel.Controls.Add(new Label{Text="Double-click to edit  •  Right-click for quick actions",ForeColor=Muted,
             AutoSize=true,Location=new Point(402,13),Font=new Font("Segoe UI",9)});
@@ -179,7 +189,10 @@ internal sealed partial class MainForm : Form
     private void ShowPage(string page)
     {
         if(page=="Updates")page="Settings / Updates";
+        bool pageChanged=current!=page;
         current=page;
+        if(pageChanged)archivedToggle.Checked=false;
+        archivedToggle.Visible=CatalogArchive.IsCatalog(CanonicalPage(page));
         foreach(var (name,b) in tabs)
         {
             bool active=name==page;
@@ -190,6 +203,7 @@ internal sealed partial class MainForm : Form
         }
         sectionTitle.Text=page=="Home"?"Workspace Home":page=="Dashboard"?"Business Dashboard":page;
         actions.Controls.Clear();
+        archiveButton=restoreButton=purgeButton=null;
         search.Text="";
         bool workspace=IsWorkspacePage(page);
         searchPanel.Visible=!workspace;
@@ -220,12 +234,14 @@ internal sealed partial class MainForm : Form
             AddAction("Edit Product",()=>Edit(SelectedId()));
             AddAction("Scan / Adjust Stock",()=>Adjust(),false,195);
             AddAction("Import Excel",()=>ImportExcel(),false,170);
+            AddCatalogButtons();
         }
         else if(page is "Suppliers" or "Customers")
         {
             AddAction(page=="Suppliers"?"Add Supplier":"Add Customer",()=>Edit(0),true);
             AddAction("Edit Selected",()=>Edit(SelectedId()));
             AddAction("Import Excel",()=>ImportExcel());
+            AddCatalogButtons();
         }
         else if(page=="Expenses")
         {
@@ -265,7 +281,17 @@ internal sealed partial class MainForm : Form
         var context=new ContextMenuStrip();
         if(page is "Products / Catalog" or "Suppliers" or "Customers")
         {
-            context.Items.Add("Edit selected",null,(_,_)=>Safe(()=>Edit(SelectedId())));
+            var editItem=context.Items.Add("Edit selected",null,(_,_)=>Safe(()=>Edit(SelectedId())));
+            var archiveItem=context.Items.Add("Archive selected",null,(_,_)=>Safe(ArchiveSelected));
+            var restoreItem=context.Items.Add("Restore selected",null,(_,_)=>Safe(RestoreSelected));
+            var purgeItem=context.Items.Add("Delete archived entry permanently",null,(_,_)=>Safe(PurgeSelected));
+            context.Opening+=(_,_)=>{
+                bool archived=archivedToggle.Checked;
+                editItem.Enabled=!archived;
+                archiveItem.Enabled=!archived;
+                restoreItem.Enabled=archived;
+                purgeItem.Enabled=archived;
+            };
             if(page=="Products / Catalog")
             {
                 context.Items.Add("Scan / adjust stock",null,(_,_)=>Safe(Adjust));
@@ -367,7 +393,10 @@ internal sealed partial class MainForm : Form
     private void RefreshGrid()
     {
         if(IsWorkspacePage(current))return;
-        BindTextTable(grid,Repository.Table(CanonicalPage(current),search.Text));
+        BindTextTable(grid,Repository.Table(CanonicalPage(current),search.Text,
+            CatalogArchive.IsCatalog(CanonicalPage(current))&&archivedToggle.Checked));
+        if(grid.Columns.Contains("Archived On"))
+            grid.Columns["Archived On"]!.Visible=archivedToggle.Checked;
         bottom.Text=$"{grid.Rows.Count:N0} records visible  •  C# Lab database: {Store.Database}";
     }
 
@@ -422,6 +451,8 @@ internal sealed partial class MainForm : Form
     }
     private void Edit(long id)
     {
+        if(id>0 && archivedToggle.Checked && CatalogArchive.IsCatalog(CanonicalPage(current)))
+            throw new InvalidOperationException("Restore this archived entry before editing it.");
         bool changed=current switch
         {
             "Products / Catalog"=>Editors.Product(this,id),
@@ -433,6 +464,8 @@ internal sealed partial class MainForm : Form
     }
     private void Adjust()
     {
+        if(current=="Products / Catalog" && archivedToggle.Checked)
+            throw new InvalidOperationException("Restore an archived product before adjusting its stock.");
         string code=CurrentCell("SKU")??"";
         if(Editors.AdjustStock(this,code))RefreshGrid();
     }
@@ -468,6 +501,8 @@ internal sealed partial class MainForm : Form
     private void ImportExcel()
     {
         if(current is not ("Products / Catalog" or "Suppliers" or "Customers"))return;
+        if(archivedToggle.Checked)
+            throw new InvalidOperationException("Switch to the active catalog before importing an Excel workbook.");
         using var picker=new OpenFileDialog{Filter="Excel workbook (*.xlsx)|*.xlsx",Title=$"Import {current} from Excel"};
         if(picker.ShowDialog(this)!=DialogResult.OK)return;
         if(MessageBox.Show(this,$"Import {current} from this Excel workbook into the C# LAB database only?\n\n"+

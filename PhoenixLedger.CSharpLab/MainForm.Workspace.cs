@@ -13,6 +13,7 @@ internal sealed partial class MainForm
     {
         foreach (string page in Pages) ShowPage(page);
         SmokeCustomerGridBinding();
+        SmokeArchivedCatalogNavigation();
         ShowPage("Settings / Updates");
         if (settingsTabs==null || updateView.Parent is not TabPage)
             throw new InvalidOperationException("Settings / Updates page did not initialize.");
