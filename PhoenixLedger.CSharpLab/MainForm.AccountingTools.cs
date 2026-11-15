@@ -88,8 +88,8 @@ internal sealed partial class MainForm
         grid.Columns.Add(combo);
         grid.Columns.Add(new DataGridViewTextBoxColumn{HeaderText="Debit ($)",Name="Debit",Width=160});
         grid.Columns.Add(new DataGridViewTextBoxColumn{HeaderText="Credit ($)",Name="Credit",Width=160});
-        grid.Rows.Add("Cash","100.00","0.00");
-        grid.Rows.Add("Opening Balance Equity","0.00","100.00");
+        grid.Rows.Add("Cash","","");
+        grid.Rows.Add("Opening Balance Equity","","");
         grid.DataError+=(_,e)=>e.ThrowException=false;
         panel.Controls.Add(grid,0,1);
         var footer=new FlowLayoutPanel{Dock=DockStyle.Fill,FlowDirection=FlowDirection.RightToLeft};
