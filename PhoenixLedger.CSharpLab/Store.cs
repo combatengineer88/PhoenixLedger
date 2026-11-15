@@ -42,6 +42,27 @@ internal static class Store
         using var conn = Open();
         Schema(conn);
         if (created) Seed(conn);
+        else
+        {
+            using var check=conn.CreateCommand();
+            check.CommandText="SELECT count(*) FROM sqlite_master WHERE type='table' AND name='lab_fin_journal'";
+            bool newFinancialSchema=Convert.ToInt64(check.ExecuteScalar()??0L)==0;
+            if(newFinancialSchema)
+            {
+                // One-time, consistent pre-finance-migration copy. An unavailable
+                // backup destination is fatal: never migrate without a backup.
+                string backup=Path.Combine(Backups,
+                    $"lab_before_finance_v0.4.0_{DateTime.Now:yyyyMMdd_HHmmss}.db");
+                using var copy=new SqliteConnection(new SqliteConnectionStringBuilder {
+                    DataSource=backup,Mode=SqliteOpenMode.ReadWriteCreate }.ToString());
+                copy.Open();
+                conn.BackupDatabase(copy);
+                using var integrity=copy.CreateCommand();
+                integrity.CommandText="PRAGMA quick_check";
+                if(!string.Equals(integrity.ExecuteScalar()?.ToString(),"ok",StringComparison.OrdinalIgnoreCase))
+                    throw new IOException("Pre-migration C# Lab backup failed its integrity check.");
+            }
+        }
         conn.Close();
         FinancialOperations.Initialize();
     }
