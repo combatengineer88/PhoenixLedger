@@ -195,7 +195,7 @@ internal sealed partial class MainForm : Form
                 AddAction("Customers",()=>ShowPage("Customers"),false,140);
                 AddAction("Products",()=>ShowPage("Products / Catalog"),false,140);
                 AddAction("Reports",()=>ShowPage("Reports"),false,140);
-                BuildDashboard();
+                BuildHomeWorkspace();
             }
             else BuildBusinessPage(page);
             bottom.Text=page=="Home"?"Independent C# Lab  •  "+Store.Database:
