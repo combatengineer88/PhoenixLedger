@@ -96,7 +96,13 @@ internal sealed partial class MainForm
             command("Business settings and &updates",()=>{ShowPage("Settings / Updates");OpenUpdateTab();}),
             new ToolStripSeparator(),
             command("Open &application folder",()=>OpenDirectory(AppContext.BaseDirectory)),
-            command("View update &log",OpenUpdateLog)
+            command("View update &log",OpenUpdateLog),
+            new ToolStripSeparator(),
+            command("Create &purchase order...",()=>{ShowPage("Purchase Orders");NewPurchaseOrder();}),
+            command("Record &invoice payment...",()=>{ShowPage("Estimates & Invoices");PayInvoiceOrSupplier(false);}),
+            command("PDF &Layout Designer...",()=>OpenPdfDesigner("Invoice")),
+            command("Record &budget...",ManageBudget),
+            command("Enter &bank transaction...",EnterBankTransaction)
         );
         var help=submenu("&Help",
             command("GitHub source / user guide",()=>Process.Start(new ProcessStartInfo(
@@ -116,11 +122,10 @@ internal sealed partial class MainForm
             $"PhoenixLedger C# Lab {UpdateService.CurrentVersion.ToString(3)}\n" +
             "Windows Forms edition — independent experimental workspace\n\n" +
             "Navigation and workflow layout reference: Python PhoenixLedger v3.6.x.\n" +
-            "C# Lab currently supports editable customers, suppliers, products, " +
-            "inventory adjustments and expenses, plus CSV reports, read-only accounting, " +
-            "branding preferences, backups and GitHub-driven updates.\n\n" +
-            "Purchase order/estimate/invoice posting, PDF template design and " +
-            "employee login management are not yet ported.\n\n" +
+            "C# Lab supports products, customers, suppliers, inventory, purchase-order " +
+            "receiving, supplier and invoice payments, financial reports and PDF layout design.\n\n" +
+            "Employee authentication and complete invoice/estimate authoring are not yet ported. " +
+            "Reconcile imported historical accounts before using reports for business decisions.\n\n" +
             $"C# Lab database:\n{Store.Database}",
             "About PhoenixLedger",MessageBoxButtons.OK,MessageBoxIcon.Information);
     }
@@ -272,12 +277,18 @@ internal sealed partial class MainForm
     {
         if(current!="Accounting")
             throw new InvalidOperationException("Open Accounting first.");
-        using var c=Store.Open();
-        if(!BusinessData.HasTable(c,"journal_lines"))
-            throw new InvalidOperationException("No accounting journal has been imported into the C# Lab yet.");
-        long id=SelectedId();
-        using var command=c.CreateCommand();
-        command.CommandText="""
+        long selected=SelectedId();
+        bool lab=selected>=1000000000;
+        long id=lab?selected-1000000000:selected;
+        using var db=Store.Open();
+        if(!lab && !BusinessData.HasTable(db,"journal_lines"))
+            throw new InvalidOperationException("This journal has no imported line items.");
+        using var command=db.CreateCommand();
+        command.CommandText=lab?"""
+            SELECT account AS Account,printf('$%.2f',debit/100.0) AS Debit,
+                printf('$%.2f',credit/100.0) AS Credit
+            FROM lab_fin_lines WHERE journal_id=@id ORDER BY id
+            """:"""
             SELECT account AS Account,printf('$%.2f',debit/100.0) AS Debit,
                 printf('$%.2f',credit/100.0) AS Credit
             FROM journal_lines WHERE journal_id=@id ORDER BY id
@@ -287,7 +298,7 @@ internal sealed partial class MainForm
         var table=new DataTable();table.Load(reader);
         using var window=new Form
         {
-            Text=$"Journal #{id} — Read-only lines",Width=800,Height=480,
+            Text=$"Journal #{id} — Line Items",Width=800,Height=480,
             StartPosition=FormStartPosition.CenterParent
         };
         window.Controls.Add(new DataGridView
@@ -349,24 +360,37 @@ internal sealed partial class MainForm
     {
         var layout=new TableLayoutPanel
         {
-            Dock=DockStyle.Fill,ColumnCount=1,RowCount=3,Padding=new Padding(6)
+            Dock=DockStyle.Fill,ColumnCount=1,RowCount=4,Padding=new Padding(6)
         };
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute,58));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute,56));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute,48));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute,47));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute,47));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent,100));
-        layout.Controls.Add(Heading("Business reports — C# Lab database",850),0,0);
+        layout.Controls.Add(Heading("Automated financial and operating reports — C# Lab",990),0,0);
         var bar=new FlowLayoutPanel
         {
             Dock=DockStyle.Fill,WrapContents=false,FlowDirection=FlowDirection.LeftToRight
         };
-        var picker=new ComboBox{DropDownStyle=ComboBoxStyle.DropDownList,Width=280};
-        picker.Items.AddRange(BusinessData.ReportNames.Cast<object>().ToArray());
-        picker.SelectedIndex=0;
-        bar.Controls.Add(picker);
-        var run=ActionButton("Run report",()=>LoadReport(picker.Text),136);
-        bar.Controls.Add(run);
-        bar.Controls.Add(ActionButton("Export report CSV",ExportReport,184));
+        reportKind=new ComboBox{DropDownStyle=ComboBoxStyle.DropDownList,Width=275};
+        reportKind.Items.AddRange(FinancialReports.Names.Cast<object>().ToArray());
+        reportKind.SelectedIndex=0;
+        reportKind.SelectedIndexChanged+=(_,_)=>Safe(()=>LoadReport(reportKind.Text));
+        bar.Controls.Add(reportKind);
+        bar.Controls.Add(new Label{Text="From:",Width=48,Height=28,TextAlign=ContentAlignment.MiddleRight});
+        reportStart=new DateTimePicker{Value=new DateTime(DateTime.Today.Year,1,1),Width=142};
+        bar.Controls.Add(reportStart);
+        bar.Controls.Add(new Label{Text="Through:",Width=78,Height=28,TextAlign=ContentAlignment.MiddleRight});
+        reportEnd=new DateTimePicker{Value=DateTime.Today,Width=145};
+        bar.Controls.Add(reportEnd);
+        bar.Controls.Add(ActionButton("Generate",()=>LoadReport(reportKind.Text),120));
         layout.Controls.Add(bar,0,1);
+        var actionsBar=new FlowLayoutPanel{Dock=DockStyle.Fill,WrapContents=false};
+        actionsBar.Controls.Add(ActionButton("Export CSV",ExportReport,125));
+        actionsBar.Controls.Add(ActionButton("Export PDF",ExportFinancialReportPdf,125));
+        actionsBar.Controls.Add(ActionButton("Edit PDF Layout",()=>OpenPdfDesigner("Report"),150));
+        actionsBar.Controls.Add(ActionButton("Set Monthly Budget",ManageBudget,175));
+        actionsBar.Controls.Add(ActionButton("Enter Bank Transaction",EnterBankTransaction,202));
+        layout.Controls.Add(actionsBar,0,2);
         reportGrid=new DataGridView
         {
             Dock=DockStyle.Fill,ReadOnly=true,AllowUserToAddRows=false,
@@ -374,16 +398,17 @@ internal sealed partial class MainForm
             AutoSizeColumnsMode=DataGridViewAutoSizeColumnsMode.DisplayedCells,
             BackgroundColor=Color.White,SelectionMode=DataGridViewSelectionMode.FullRowSelect
         };
-        layout.Controls.Add(reportGrid,0,2);
+        layout.Controls.Add(reportGrid,0,3);
         dashboard.Controls.Add(layout);
-        LoadReport(picker.Text);
+        LoadReport(reportKind.Text);
     }
 
     private void LoadReport(string name)
     {
-        if(reportGrid==null)return;
-        reportGrid.DataSource=BusinessData.Report(name);
-        bottom.Text=$"{reportGrid.Rows.Count} report rows  •  Recorded C# Lab data only  •  {Store.Database}";
+        if(reportGrid==null||reportStart==null||reportEnd==null)return;
+        reportGrid.DataSource=FinancialReports.Generate(name,reportStart.Value,reportEnd.Value);
+        bottom.Text=$"{reportGrid.Rows.Count:N0} rows — {name} — {reportStart.Value:yyyy-MM-dd} to {reportEnd.Value:yyyy-MM-dd}" +
+            "  •  C# Lab data; imported journal history may require reconciliation";
     }
 
     private void ExportReport()
@@ -439,6 +464,10 @@ internal sealed partial class MainForm
             maintenance.Controls.Add(ActionButton("Open data directory",()=>OpenDirectory(Store.Root),240));
             maintenance.Controls.Add(ActionButton("Open application directory",()=>OpenDirectory(AppContext.BaseDirectory),270));
             maintenance.Controls.Add(ActionButton("View update log",OpenUpdateLog,240));
+            maintenance.Controls.Add(ActionButton("Design Invoice PDF",()=>OpenPdfDesigner("Invoice"),240));
+            maintenance.Controls.Add(ActionButton("Design Estimate PDF",()=>OpenPdfDesigner("Estimate"),240));
+            maintenance.Controls.Add(ActionButton("Design Purchase Order PDF",()=>OpenPdfDesigner("Purchase Order"),270));
+            maintenance.Controls.Add(ActionButton("Design Report PDF",()=>OpenPdfDesigner("Report"),240));
             maintenance.Controls.Add(Paragraph("Lab SQLite database:\n"+Store.Database,730,85));
             storage.Controls.Add(maintenance);
             settingsTabs.SelectedIndex=1;
@@ -478,7 +507,7 @@ internal sealed partial class MainForm
         var actionsBar=new FlowLayoutPanel{Dock=DockStyle.Fill,WrapContents=false};
         actionsBar.Controls.Add(ActionButton("Save business details",()=>{
             BusinessData.SetSettings(fields.ToDictionary(k=>k.Key,v=>v.Value.Text));
-            MessageBox.Show(this,"C# Lab branding saved. Document PDF templates are not yet ported.",
+            MessageBox.Show(this,"C# Lab branding saved. Use the PDF Designer to apply it to documents.",
                 "Business identity",MessageBoxButtons.OK,MessageBoxIcon.Information);
         },210));
         actionsBar.Controls.Add(ActionButton("Choose company logo",ChooseCompanyLogo,200));
@@ -487,7 +516,7 @@ internal sealed partial class MainForm
         {
             Dock=DockStyle.Fill,Padding=new Padding(20),ForeColor=Color.FromArgb(103,119,138),
             Text="These settings are stored in the C# Lab database. " +
-                "The full Python visual document designer and branded PDF exports are not yet available in this edition."
+                "Open the PDF Designer from Tools or the maintenance tab to create independent drag-and-drop layouts for invoices, estimates, purchase orders and reports."
         });
         tab.Controls.Add(panel);
     }
