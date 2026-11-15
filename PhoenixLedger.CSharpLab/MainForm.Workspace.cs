@@ -14,6 +14,13 @@ internal sealed partial class MainForm
         foreach (string page in Pages) ShowPage(page);
         SmokeCustomerGridBinding();
         SmokeArchivedCatalogNavigation();
+        // Construct the complete bulk editor on the Windows UI thread.
+        // This catches missing controls and initial filtered catalog binding.
+        using (var bulkEditor=new BulkProductEditor(Array.Empty<long>()))
+        {
+            if(bulkEditor.Text!="PhoenixLedger — Bulk Product Editor")
+                throw new InvalidOperationException("Bulk product editor failed to initialize.");
+        }
         ShowPage("Settings / Updates");
         if (settingsTabs==null || updateView.Parent is not TabPage)
             throw new InvalidOperationException("Settings / Updates page did not initialize.");
