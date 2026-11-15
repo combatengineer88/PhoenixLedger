@@ -1,3 +1,25 @@
+# PhoenixLedger C# Lab v0.3.0 — Python-inspired workspace
+
+This experimental C# application retains its separate data in %LOCALAPPDATA%\PhoenixLedgerCSharpLab. It never updates the Python application's database in place.
+
+## Features ported and working
+- Classic Windows File / Edit / View / Tools / Help menu bar with actions and keyboard shortcuts.
+- Python-based navigation: Home, Dashboard, Customers, Suppliers, Products / Catalog, Purchase Orders, Estimates & Invoices, Expenses, Reports, Accounting, Administration, Settings / Updates; C# Inventory History is also retained.
+- Home sidebar quick links, supplier and customer workflow lanes. The unfinished financial actions are clearly disabled.
+- Editable C# Lab products, suppliers, customers, stock adjustments, SKU/barcode search, Excel import and CSV export.
+- Expenses: add, edit, delete, search, export in the separate Lab database, compatible with the imported Python expenses table.
+- Reports: sales, payments (if imported), expense summaries, reorder stock, invoice information, supplier product catalog, customer totals. Export report CSV.
+- Accounting: read-only imported journal summary and journal line details. No financial posting.
+- Administration: database backups, import a copy of Python records, open Lab folder.
+- Settings / Updates: editable business identity and locally saved logo, maintenance and existing GitHub auto-updater.
+
+## Not yet ported
+PO creation/receiving, invoice and estimate posting, payments, customer credit, full employee sign-in/roles, and visual PDF templates. Related purchase orders and estimates/invoices remain read-only rather than exposing unfinished controls.
+
+## Release and updater check
+GitHub Actions builds the Windows application, packages an Inno Setup installer and creates version v0.3.0 if the main build succeeds. Users with v0.2.1 installed can check Settings / Updates, download the SHA-256-verified installer and update the existing selected installation directory without manually replacing files. Per-user/all-users Windows installation scope is preserved.
+
+---
 # PhoenixLedger C# Lab 0.2.1 — Experimental Windows Edition
 
 **A SEPARATE editable C# / Windows Forms project, NOT an upgrade to the Python PhoenixLedger application.**
