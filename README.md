@@ -1,3 +1,16 @@
+# PhoenixLedger C# Lab v0.4.2 — installer exit-code-5 reliability fix
+
+The v0.4.1 updater used Inno Setup's `/VERYSILENT /SUPPRESSMSGBOXES` combination. Inno Setup's documented behavior is to automatically **Abort** or **Cancel** in some Retry/error dialogs when `SUPPRESSMSGBOXES` is present. Windows Setup exit code **5** then reports a cancellation/abort without the original reason visible. The exact reason on a user's computer requires the installer log.
+
+v0.4.2 removes `/SUPPRESSMSGBOXES`, uses `/SILENT` (progress visible, normal installation does not require clicks), waits for **all running PhoenixLedger C# Lab processes** to exit before launching Setup, and gives the user a Retry/Cancel option if another copy is still open. It never force-kills another window. The agent also adds a human-readable exit-code explanation and the latest relevant installer-log lines to error dialogs.
+
+The update process still verifies SHA-256, retains the selected directory/install scope, waits for Setup's actual exit code, and reopens PhoenixLedger only following a successful installation. The GitHub Actions pipeline also performs an actual per-user installer smoke test in a disposable Windows runner.
+
+**Bootstrapping from v0.4.1:** if the built-in updater previously failed with code 5, close PhoenixLedger and run the v0.4.2 installer once manually with the **same all-users/current-user scope and destination**. This avoids the broken updater path in v0.4.1. Existing data remains in `%LOCALAPPDATA%\PhoenixLedgerCSharpLab` rather than the installation directory. You do not need to uninstall first.
+
+**To diagnose the exact exit-5 cause on v0.4.1:** the local file `%LOCALAPPDATA%\PhoenixLedgerCSharpLab\updates\last-update-install.log` contains the Inno Setup installation log. Review its last 50–100 lines and omit/redact personal paths or other sensitive data before sharing. Code 5 alone does not prove that insufficient privileges or a file lock was the cause.
+
+---
 # PhoenixLedger C# Lab v0.3.1 — Automatic update reliability
 
 Fixes the Windows error “the process cannot access the file because it is being used by another process.” In earlier versions, the downloaded installer was renamed while its SHA-256 read handle was still open. The verification handle is now closed before the rename.
