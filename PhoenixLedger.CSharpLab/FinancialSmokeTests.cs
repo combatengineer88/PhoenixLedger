@@ -59,6 +59,17 @@ internal static class FinancialSmokeTests
         }
         catch(InvalidOperationException) { }
 
+        FinancialOperations.AddAccount("CI Test Asset","1999","Asset");
+        try
+        {
+            FinancialOperations.ManualJournal(DateTime.Today,"Unbalanced CI entry",
+                new[]{("Cash",100L,0L),("CI Test Asset",0L,99L)});
+            throw new Exception("Unbalanced manual journal was allowed.");
+        }
+        catch(InvalidOperationException e) when(e.Message.Contains("balance")) { }
+        FinancialOperations.ManualJournal(DateTime.Today,"Opening cash CI",
+            new[]{("Cash",100L,0L),("Opening Balance Equity",0L,100L)});
+
         BusinessData.SaveExpense(0,DateTime.Today,"Supplies","CI Vendor","Test expense",10m);
         long expenseId=FinancialOperations.Scalar(db,null,"SELECT max(id) FROM expenses");
         BusinessData.SaveExpense(expenseId,DateTime.Today,"Supplies","CI Vendor","Edited expense",15m);
