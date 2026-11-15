@@ -183,11 +183,16 @@ internal static class UpdateService
                     throw new InvalidDataException("Downloaded installer size did not match the release.");
             }
 
-            await using var downloadedFile = File.OpenRead(partial);
-            byte[] computed = await SHA256.HashDataAsync(downloadedFile, cancellationToken);
-            if (!CryptographicOperations.FixedTimeEquals(
-                computed, Convert.FromHexString(update.Sha256)))
-                throw new InvalidDataException("Installer checksum verification failed. No update was installed.");
+            // Scope the verification handle so Windows can rename the .partial
+            // file. In v0.2.x/v0.3.0 this handle lived until method return and
+            // caused "used by another process" on File.Move.
+            await using (var downloadedFile = File.OpenRead(partial))
+            {
+                byte[] computed = await SHA256.HashDataAsync(downloadedFile, cancellationToken);
+                if (!CryptographicOperations.FixedTimeEquals(
+                    computed, Convert.FromHexString(update.Sha256)))
+                    throw new InvalidDataException("Installer checksum verification failed. No update was installed.");
+            }
 
             File.Move(partial, target, overwrite: true);
             return target;
@@ -198,33 +203,57 @@ internal static class UpdateService
         }
     }
 
-    public static void LaunchInstallerAndExit(Form form, string installerPath)
+    public static void LaunchInstallerAndExit(Form form, string installerPath, AvailableUpdate update)
     {
         InstallationLocation location = DetectInstallation() ??
             throw new InvalidOperationException(
                 "This copy is not installed using the PhoenixLedger Windows installer. " +
-                "Install the latest release manually first.");
-        string installDir = location.Directory;
-        string installMode = location.AllUsers ? "/ALLUSERS" : "/CURRENTUSER";
+                "Install a Windows release first.");
+
         if (!File.Exists(installerPath))
             throw new FileNotFoundException("The verified installer was not found.", installerPath);
 
-        // Inno Setup reuses the same AppId and install directory. The running
-        // program exits immediately; the installer overwrites application files.
-        string logFile = Path.Combine(Store.Root, "updates", "last-update-install.log");
+        // Important: the updater process must NOT run from Program Files.
+        // Copy the dedicated helper into per-user staging so that no updater
+        // executable keeps the installed application folder locked.
+        string bundledAgent = Path.Combine(AppContext.BaseDirectory, "PhoenixLedger.UpdateAgent.exe");
+        if (!File.Exists(bundledAgent))
+            throw new FileNotFoundException("The standalone update agent was not included with this build.", bundledAgent);
+
+        string staging = Path.Combine(Store.Root, "updates");
+        Directory.CreateDirectory(staging);
+        string agentCopy = Path.Combine(staging,
+            $"PhoenixLedger.UpdateAgent-{CurrentVersion.ToString(3)}-{Guid.NewGuid():N}.exe");
+        File.Copy(bundledAgent, agentCopy);
+
+        // The agent is independent of the main app and waits for this specific
+        // parent process to EXIT before it launches Inno Setup. It verifies the
+        // installer hash a second time, waits for setup and reopens the app.
         var start = new ProcessStartInfo
         {
-            FileName = installerPath,
+            FileName = agentCopy,
             UseShellExecute = true,
-            WorkingDirectory = Path.GetDirectoryName(installerPath)!,
-            // Use the same install mode as the original installation.
-            // For all-users installs Windows will show a normal UAC consent prompt.
-            Arguments = $"/SP- /VERYSILENT /SUPPRESSMSGBOXES /NORESTART " +
-                        $"/NORESTARTAPPLICATIONS {installMode} /DIR=\"{installDir}\" /LOG=\"{logFile}\""
+            WorkingDirectory = staging
         };
+        foreach (string argument in new[]
+        {
+            "--apply",
+            Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            Path.GetFullPath(installerPath),
+            location.Directory,
+            location.AllUsers ? "/ALLUSERS" : "/CURRENTUSER",
+            Path.Combine(staging, "last-update-install.log"),
+            Path.Combine(location.Directory, "PhoenixLedger.CSharpLab.exe"),
+            update.Sha256,
+            update.Size.ToString(System.Globalization.CultureInfo.InvariantCulture)
+        })
+            start.ArgumentList.Add(argument);
+
         if (Process.Start(start) is null)
-            throw new InvalidOperationException("Could not start the installer.");
-        // Never replace the running EXE in-process.
+            throw new InvalidOperationException("Could not start the independent update agent.");
+
+        // Close the application AFTER the agent has been started, but BEFORE
+        // the agent touches the installed executable or DLLs.
         form.BeginInvoke(new Action(Application.Exit));
     }
 }
