@@ -63,13 +63,16 @@ internal sealed partial class MainForm
         shortcut("Add supplier","Suppliers",()=>Edit(0));
         shortcut("Import suppliers from Excel","Suppliers",ImportExcel);
         shortcut("View purchase orders","Purchase Orders");
-        planned("Create / receive purchase order");
+        shortcut("Create purchase order","Purchase Orders",NewPurchaseOrder);
+        shortcut("Receive purchase order","Purchase Orders",ReceivePurchaseOrder);
+        shortcut("Record supplier payment","Purchase Orders",()=>PayInvoiceOrSupplier(true));
         heading("CUSTOMERS");
         shortcut("Customer directory","Customers");
         shortcut("Add new customer","Customers",()=>Edit(0));
         shortcut("Import customers from Excel","Customers",ImportExcel);
         shortcut("View estimates / invoices","Estimates & Invoices");
-        planned("Invoice payment and credit");
+        shortcut("Record invoice payment","Estimates & Invoices",()=>PayInvoiceOrSupplier(false));
+        planned("Customer credit accounts");
         heading("PRODUCTS");
         shortcut("Product catalog","Products / Catalog");
         shortcut("Add new product","Products / Catalog",()=>Edit(0));
@@ -158,8 +161,8 @@ internal sealed partial class MainForm
             Color.FromArgb(235,244,255),185);
         steps(supplier,Color.FromArgb(35,116,199),
             ("Supplier\ndirectory","Suppliers",true),
-            ("New purchase\norder — soon","Purchase Orders",false),
-            ("Receive PO\n— soon","Purchase Orders",false),
+            ("New purchase\norder","Purchase Orders",true),
+            ("Receive PO","Purchase Orders",true),
             ("Inventory\nhistory","Inventory History",true));
         work.Controls.Add(supplier);
         var customer=lane("CUSTOMER / SALES CHAIN",
@@ -168,7 +171,7 @@ internal sealed partial class MainForm
         steps(customer,Color.FromArgb(19,129,107),
             ("Customer\ndirectory","Customers",true),
             ("New estimate\n— soon","Estimates & Invoices",false),
-            ("Invoice payments\n— soon","Estimates & Invoices",false),
+            ("Invoice payments","Estimates & Invoices",true),
             ("Sales\nreports","Reports",true));
         work.Controls.Add(customer);
         work.Controls.Add(Paragraph(
