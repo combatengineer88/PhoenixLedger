@@ -232,6 +232,8 @@ internal sealed partial class MainForm : Form
         else if(page=="Purchase Orders")
         {
             AddAction("New Purchase Order",NewPurchaseOrder,true,198);
+            AddAction("Edit PO",EditPurchaseOrder,false,125);
+            AddAction("Cancel PO",CancelPurchaseOrder,false,130);
             AddAction("Approve Draft",ApprovePurchaseOrder,false,166);
             AddAction("Receive Items",ReceivePurchaseOrder,false,160);
             AddAction("Pay Supplier",()=>PayInvoiceOrSupplier(true),false,160);
@@ -269,6 +271,8 @@ internal sealed partial class MainForm : Form
         else if(page=="Purchase Orders")
         {
             context.Items.Add("View line items",null,(_,_)=>Safe(()=>ViewDetails(SelectedId())));
+            context.Items.Add("Edit purchase order",null,(_,_)=>Safe(EditPurchaseOrder));
+            context.Items.Add("Cancel purchase order",null,(_,_)=>Safe(CancelPurchaseOrder));
             context.Items.Add("Approve draft",null,(_,_)=>Safe(ApprovePurchaseOrder));
             context.Items.Add("Receive items",null,(_,_)=>Safe(ReceivePurchaseOrder));
             context.Items.Add("Pay supplier",null,(_,_)=>Safe(()=>PayInvoiceOrSupplier(true)));
