@@ -146,7 +146,7 @@ internal static class Store
                 entity_type TEXT NOT NULL,
                 entity_id INTEGER NOT NULL,
                 display_name TEXT NOT NULL,
-                action TEXT NOT NULL CHECK(action IN ('Archive','Restore')),
+                action TEXT NOT NULL CHECK(action IN ('Archive','Restore','Purge')),
                 recorded_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             );
             CREATE INDEX IF NOT EXISTS idx_lab_catalog_archive_events
