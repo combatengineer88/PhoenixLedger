@@ -202,7 +202,8 @@ internal static class UpdateService
             Arguments = $"/SP- /VERYSILENT /SUPPRESSMSGBOXES /NORESTART " +
                         $"/NORESTARTAPPLICATIONS /DIR=\"{installDir}\" /LOG=\"{logFile}\""
         };
-        Process.Start(start) ?? throw new InvalidOperationException("Could not start the installer.");
+        if (Process.Start(start) is null)
+            throw new InvalidOperationException("Could not start the installer.");
         // Never replace the running EXE in-process.
         form.BeginInvoke(new Action(Application.Exit));
     }
