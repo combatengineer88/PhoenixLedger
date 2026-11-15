@@ -72,6 +72,13 @@ internal static class Store
                 id INTEGER PRIMARY KEY, document_id INTEGER NOT NULL,
                 product_id INTEGER, description TEXT NOT NULL, qty INTEGER NOT NULL,
                 unit_price INTEGER NOT NULL, line_total INTEGER NOT NULL);
+            -- Local to C# Lab; compatible with the Python expense table when a snapshot is imported.
+            CREATE TABLE IF NOT EXISTS expenses(
+                id INTEGER PRIMARY KEY, spent_on TEXT NOT NULL,
+                category TEXT NOT NULL, vendor TEXT DEFAULT '',
+                description TEXT DEFAULT '', amount INTEGER NOT NULL DEFAULT 0);
+            CREATE TABLE IF NOT EXISTS settings(
+                key TEXT PRIMARY KEY, value TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS lab_stock_events(
                 id INTEGER PRIMARY KEY AUTOINCREMENT, product_id INTEGER NOT NULL,
                 changed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,

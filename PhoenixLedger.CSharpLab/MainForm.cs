@@ -7,14 +7,15 @@ using System.Windows.Forms;
 
 namespace PhoenixLedger.CSharpLab;
 
-internal sealed class MainForm : Form
+internal sealed partial class MainForm : Form
 {
     private static readonly Color Navy=Color.FromArgb(25,42,63);
     private static readonly Color Ink=Color.FromArgb(39,55,77);
     private static readonly Color Accent=Color.FromArgb(35,116,199);
     private static readonly Color Canvas=Color.FromArgb(241,246,251);
     private static readonly Color Muted=Color.FromArgb(103,119,138);
-    private static readonly string[] Pages={"Home","Products","Suppliers","Customers","Purchase Orders","Sales Documents","Inventory History","Updates"};
+    private static readonly string[] Pages={"Home","Dashboard","Customers","Suppliers","Products / Catalog","Purchase Orders",
+        "Estimates & Invoices","Expenses","Reports","Accounting","Administration","Settings / Updates","Inventory History"};
 
     private readonly Dictionary<string,RoundedButton> tabs=new();
     private readonly UpdateView updateView = new();
@@ -34,7 +35,7 @@ internal sealed class MainForm : Form
 
     public MainForm()
     {
-        Text="PhoenixLedger C# Lab 0.2 — Separate Experimental Edition";
+        Text="PhoenixLedger C# Lab 0.3 — Python-inspired workspace";
         Icon=Icon.ExtractAssociatedIcon(Application.ExecutablePath);
         MinimumSize=new Size(950,650);
         Size=new Size(1360,850);
@@ -58,26 +59,31 @@ internal sealed class MainForm : Form
             Font=new Font("Segoe UI",9,FontStyle.Bold),ForeColor=Color.FromArgb(180,211,242)};
         top.Controls.Add(tag);
 
-        var navigation=new FlowLayoutPanel{Dock=DockStyle.Top,Height=58,Padding=new Padding(13,10,8,7),
-            BackColor=Color.White,WrapContents=false,AutoScroll=true};
+        var navigation=new FlowLayoutPanel{Dock=DockStyle.Top,Height=95,Padding=new Padding(13,9,8,7),
+            BackColor=Color.White,WrapContents=true,AutoScroll=true};
         foreach(string page in Pages)
         {
-            var b=new RoundedButton{Text=page,Width=page switch {"Purchase Orders"=>165,"Sales Documents"=>170,"Inventory History"=>160,_=>125},
+            var b=new RoundedButton{Text=page,Width=page switch
+                {"Products / Catalog"=>165,"Estimates & Invoices"=>190,"Settings / Updates"=>177,
+                 "Inventory History"=>165,"Purchase Orders"=>158,"Administration"=>155,_=>118},
                 Height=38,Fill=Color.White,TextColor=Ink,Outline=Color.FromArgb(214,222,234),Margin=new Padding(2,0,6,0)};
             b.Click+=(_,_)=>ShowPage(page);
             tabs.Add(page,b);navigation.Controls.Add(b);
         }
-        var shell=new TableLayoutPanel {Dock=DockStyle.Fill,ColumnCount=1,RowCount=4,Margin=new Padding(0),Padding=new Padding(0)};
+        var shell=new TableLayoutPanel {Dock=DockStyle.Fill,ColumnCount=1,RowCount=5,Margin=new Padding(0),Padding=new Padding(0)};
         shell.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));
+        shell.RowStyles.Add(new RowStyle(SizeType.Absolute,30));
         shell.RowStyles.Add(new RowStyle(SizeType.Absolute,82));
-        shell.RowStyles.Add(new RowStyle(SizeType.Absolute,58));
+        shell.RowStyles.Add(new RowStyle(SizeType.Absolute,95));
         shell.RowStyles.Add(new RowStyle(SizeType.Percent,100));
         shell.RowStyles.Add(new RowStyle(SizeType.Absolute,28));
         top.Dock=DockStyle.Fill;navigation.Dock=DockStyle.Fill;content.Dock=DockStyle.Fill;bottom.Dock=DockStyle.Fill;
-        shell.Controls.Add(top,0,0);
-        shell.Controls.Add(navigation,0,1);
-        shell.Controls.Add(content,0,2);
-        shell.Controls.Add(bottom,0,3);
+        var menu=BuildMainMenu();
+        shell.Controls.Add(menu,0,0);
+        shell.Controls.Add(top,0,1);
+        shell.Controls.Add(navigation,0,2);
+        shell.Controls.Add(content,0,3);
+        shell.Controls.Add(bottom,0,4);
         Controls.Add(shell);
         content.Controls.Add(updateView);
         content.Controls.Add(dashboard);
@@ -89,12 +95,12 @@ internal sealed class MainForm : Form
         var searchLabel=new Label{Text="Search",ForeColor=Muted,AutoSize=true,Location=new Point(1,13)};
         searchPanel.Controls.Add(searchLabel);
         search.Location=new Point(68,10);searchPanel.Controls.Add(search);
-        search.TextChanged+=(_,_)=>{if(current!="Home")RefreshGrid();};
+        search.TextChanged+=(_,_)=>{if(!IsWorkspacePage(current))RefreshGrid();};
         searchPanel.Controls.Add(new Label{Text="Double-click to edit  •  Right-click for quick actions",ForeColor=Muted,
             AutoSize=true,Location=new Point(402,13),Font=new Font("Segoe UI",9)});
         ConfigureGrid();
         FormClosed+=(_,_)=>headerImage?.Dispose();
-        updateView.UpdateAvailable += (_,_)=>ShowPage("Updates");
+        updateView.UpdateAvailable += (_,_)=>{ShowPage("Settings / Updates");OpenUpdateTab();};
         Shown += async (_,_)=>await updateView.CheckOnStartupAsync();
         ShowPage("Home");
     }
@@ -156,8 +162,12 @@ internal sealed class MainForm : Form
         {MessageBox.Show(this,e.Message,"PhoenixLedger C# Lab",MessageBoxButtons.OK,MessageBoxIcon.Warning);}
     }
 
+    private static bool IsWorkspacePage(string page)=>
+        page is "Home" or "Dashboard" or "Reports" or "Administration" or "Settings / Updates";
+
     private void ShowPage(string page)
     {
+        if(page=="Updates")page="Settings / Updates";
         current=page;
         foreach(var (name,b) in tabs)
         {
@@ -167,55 +177,64 @@ internal sealed class MainForm : Form
             b.Outline=active?Accent:Color.FromArgb(214,222,234);
             b.Invalidate();
         }
-        sectionTitle.Text=page=="Home"?"Workspace Overview":page;
+        sectionTitle.Text=page=="Home"?"Workspace Home":page=="Dashboard"?"Business Dashboard":page;
         actions.Controls.Clear();
         search.Text="";
-        bool isHome=page=="Home";
-        bool isUpdates=page=="Updates";
-        searchPanel.Visible=!isHome && !isUpdates;
-        grid.Visible=!isHome && !isUpdates;
-        dashboard.Visible=isHome;
-        updateView.Visible=isUpdates;
-        if(isUpdates)
+        bool workspace=IsWorkspacePage(page);
+        searchPanel.Visible=!workspace;
+        grid.Visible=!workspace;
+        dashboard.Visible=workspace;
+        if(settingsTabs==null)updateView.Visible=false;
+
+        if(workspace)
         {
-            actions.Height=0;
-            updateView.BringToFront();
-            bottom.Text="Updates use GitHub Releases  •  Lab data remains in " + Store.Root;
-            return;
-        }
-        if(isHome)
-        {
-            actions.Height=57;
-            AddAction("Import Database Copy",ImportProductionCopy,true,210);
-            AddAction("Open Data Folder",()=>System.Diagnostics.Process.Start("explorer.exe",Store.Root),false,180);
-            BuildDashboard();
+            actions.Height=page=="Home"?57:0;
+            if(page=="Home")
+            {
+                AddAction("Import Database Copy",ImportProductionCopy,true,210);
+                AddAction("Customers",()=>ShowPage("Customers"),false,140);
+                AddAction("Products",()=>ShowPage("Products / Catalog"),false,140);
+                AddAction("Reports",()=>ShowPage("Reports"),false,140);
+                BuildHomeWorkspace();
+            }
+            else BuildBusinessPage(page);
+            bottom.Text=page=="Home"?"Independent C# Lab  •  "+Store.Database:
+                page=="Dashboard"?"C# Lab business metrics  •  "+Store.Database:bottom.Text;
             return;
         }
         actions.Height=99;
-        if(page=="Products")
+        if(page=="Products / Catalog")
         {
             AddAction("Add Product",()=>Edit(0),true);
             AddAction("Edit Product",()=>Edit(SelectedId()));
             AddAction("Scan / Adjust Stock",()=>Adjust(),false,195);
             AddAction("Import Excel",()=>ImportExcel(),false,170);
         }
-        else if(page=="Suppliers"||page=="Customers")
+        else if(page is "Suppliers" or "Customers")
         {
             AddAction(page=="Suppliers"?"Add Supplier":"Add Customer",()=>Edit(0),true);
             AddAction("Edit Selected",()=>Edit(SelectedId()));
             AddAction("Import Excel",()=>ImportExcel());
         }
-        else if(page=="Purchase Orders"||page=="Sales Documents")
+        else if(page=="Expenses")
+        {
+            AddAction("Add Expense",()=>EditExpense(0),true);
+            AddAction("Edit Expense",()=>EditExpense(SelectedId()));
+            AddAction("Delete Expense",()=>DeleteSelectedExpense(),false,165);
+        }
+        else if(page=="Accounting")
+            AddAction("View Journal Lines",()=>ViewAccountingLines(),true,200);
+        else if(page is "Purchase Orders" or "Estimates & Invoices")
             AddAction("View Line Items",()=>ViewDetails(SelectedId()),true);
-        AddAction("Export Visible CSV",ExportCsv,false,198);
-        AddAction("Refresh",RefreshGrid,false,126);
-        AddAction("Import Database Copy",ImportProductionCopy,false,205);
+        AddAction("Export Visible CSV",()=>ExportCsv(),false,198);
+        AddAction("Refresh",()=>RefreshGrid(),false,126);
+        AddAction("Import Database Copy",()=>ImportProductionCopy(),false,205);
         RefreshGrid();
         var context=new ContextMenuStrip();
-        if(page is "Products" or "Suppliers" or "Customers")
+        if(page is "Products / Catalog" or "Suppliers" or "Customers")
         {
             context.Items.Add("Edit selected",null,(_,_)=>Safe(()=>Edit(SelectedId())));
-            if(page=="Products")
+            if(page=="Products / Catalog")
             {
                 context.Items.Add("Scan / adjust stock",null,(_,_)=>Safe(Adjust));
                 context.Items.Add("Copy SKU",null,(_,_)=>Safe(()=>{
@@ -223,7 +242,14 @@ internal sealed class MainForm : Form
                 }));
             }
         }
-        if(page is "Purchase Orders" or "Sales Documents")
+        else if(page=="Expenses")
+        {
+            context.Items.Add("Edit expense",null,(_,_)=>Safe(()=>EditExpense(SelectedId())));
+            context.Items.Add("Delete expense",null,(_,_)=>Safe(DeleteSelectedExpense));
+        }
+        else if(page=="Accounting")
+            context.Items.Add("View journal lines",null,(_,_)=>Safe(ViewAccountingLines));
+        else if(page is "Purchase Orders" or "Estimates & Invoices")
             context.Items.Add("View line items",null,(_,_)=>Safe(()=>ViewDetails(SelectedId())));
         context.Items.Add("Export visible CSV",null,(_,_)=>Safe(ExportCsv));
         grid.ContextMenuStrip=context;
@@ -263,8 +289,8 @@ internal sealed class MainForm : Form
 
     private void RefreshGrid()
     {
-        if(current=="Home")return;
-        grid.DataSource=Repository.Table(current,search.Text);
+        if(IsWorkspacePage(current))return;
+        grid.DataSource=Repository.Table(CanonicalPage(current),search.Text);
         bottom.Text=$"{grid.Rows.Count:N0} records visible  •  C# Lab database: {Store.Database}";
     }
     private long SelectedId()
@@ -282,15 +308,17 @@ internal sealed class MainForm : Form
     {
         Safe(()=>{
             long id=SelectedId();
-            if(current is "Products" or "Suppliers" or "Customers")Edit(id);
-            else if(current is "Purchase Orders" or "Sales Documents")ViewDetails(id);
+            if(current is "Products / Catalog" or "Suppliers" or "Customers")Edit(id);
+            else if(current=="Expenses")EditExpense(id);
+            else if(current=="Accounting")ViewAccountingLines();
+            else if(current is "Purchase Orders" or "Estimates & Invoices")ViewDetails(id);
         });
     }
     private void Edit(long id)
     {
         bool changed=current switch
         {
-            "Products"=>Editors.Product(this,id),
+            "Products / Catalog"=>Editors.Product(this,id),
             "Suppliers"=>Editors.Supplier(this,id),
             "Customers"=>Editors.Customer(this,id),
             _=>false
@@ -304,7 +332,7 @@ internal sealed class MainForm : Form
     }
     private void ViewDetails(long id)
     {
-        var detail=Repository.Details(current,id);
+        var detail=Repository.Details(CanonicalPage(current),id);
         using var f=new Form {Text=$"{current} #{id} — Line Items (read-only)",Width=950,Height=620,
             StartPosition=FormStartPosition.CenterParent,BackColor=Canvas,Font=new Font("Segoe UI",10)};
         var g=new DataGridView{Dock=DockStyle.Fill,DataSource=detail,ReadOnly=true,RowHeadersVisible=false,
@@ -331,13 +359,13 @@ internal sealed class MainForm : Form
     }
     private void ImportExcel()
     {
-        if(current is not ("Products" or "Suppliers" or "Customers"))return;
+        if(current is not ("Products / Catalog" or "Suppliers" or "Customers"))return;
         using var picker=new OpenFileDialog{Filter="Excel workbook (*.xlsx)|*.xlsx",Title=$"Import {current} from Excel"};
         if(picker.ShowDialog(this)!=DialogResult.OK)return;
         if(MessageBox.Show(this,$"Import {current} from this Excel workbook into the C# LAB database only?\n\n"+
             picker.FileName+"\n\nRows with matching SKU/name/email may be updated.",
             "Confirm experimental import",MessageBoxButtons.YesNo,MessageBoxIcon.Question)!=DialogResult.Yes)return;
-        var result=ExcelImporter.ImportXlsx(picker.FileName,current);
+        var result=ExcelImporter.ImportXlsx(picker.FileName,CanonicalPage(current));
         MessageBox.Show(this,$"Imported: {result.Inserted} new, {result.Updated} updated.\n\nOnly the C# Lab database was modified.",
             "Excel import complete",MessageBoxButtons.OK,MessageBoxIcon.Information);
         RefreshGrid();
