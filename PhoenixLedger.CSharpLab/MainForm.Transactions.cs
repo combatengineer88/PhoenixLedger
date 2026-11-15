@@ -28,13 +28,27 @@ internal sealed partial class MainForm
         Margin=new Padding(5,11,5,4)
     };
 
-    private void NewPurchaseOrder()
+    private void NewPurchaseOrder()=>PurchaseOrderEditor(0);
+    private void EditPurchaseOrder()=>PurchaseOrderEditor(SelectedId());
+
+    private void CancelPurchaseOrder()
+    {
+        long id=SelectedId();
+        if(MessageBox.Show(this,$"Cancel purchase order #{id}? Only unreceived orders can be cancelled.",
+            "Cancel purchase order",MessageBoxButtons.YesNo,MessageBoxIcon.Warning)!=DialogResult.Yes)return;
+        FinancialOperations.CancelPurchaseOrder(id);
+        RefreshGrid();
+    }
+
+    private void PurchaseOrderEditor(long editId)
     {
         var suppliers=Options("suppliers");
         var products=Options("products");
         if(suppliers.Count==0||products.Count==0)
             throw new InvalidOperationException("Create a supplier and at least one product before creating a PO.");
-        using var win=new Form{Text="Create purchase order — C# Lab",Width=1020,Height=670,
+        if(editId>0 && FinancialOperations.PurchaseOrderInfo(editId).Status is not ("Draft" or "Open"))
+            throw new InvalidOperationException("Only unreceived Draft/Open purchase orders can be edited.");
+        using var win=new Form{Text=editId>0?"Edit purchase order #"+editId:"Create purchase order — C# Lab",Width=1020,Height=670,
             StartPosition=FormStartPosition.CenterParent,MinimumSize=new Size(850,570)};
         var body=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=1,RowCount=5,Padding=new Padding(14)};
         body.RowStyles.Add(new RowStyle(SizeType.Absolute,42));
@@ -62,12 +76,26 @@ internal sealed partial class MainForm
         lines.Columns.Add(productCol);
         lines.Columns.Add(new DataGridViewTextBoxColumn{HeaderText="Quantity",Name="Quantity",Width=135});
         lines.Columns.Add(new DataGridViewTextBoxColumn{HeaderText="Unit Cost ($)",Name="UnitCost",Width=170});
+        if(editId>0)
+        {
+            var info=FinancialOperations.PurchaseOrderInfo(editId);
+            vendor.SelectedValue=info.SupplierId;
+            on.Value=info.Date;
+            notes.Text=info.Notes;
+            foreach(var item in FinancialOperations.PurchaseLines(editId))
+                lines.Rows.Add(item.ProductId,item.Ordered,Repository.Dollars(item.CostCents).ToString("0.00"));
+        }
         lines.DataError+=(_,e)=>{e.ThrowException=false;};
         body.Controls.Add(lines,0,3);
         var footer=new FlowLayoutPanel{Dock=DockStyle.Fill,FlowDirection=FlowDirection.RightToLeft};
         var cancel=new Button{Text="Cancel",Width=130,Height=40,DialogResult=DialogResult.Cancel};
         var draft=new Button{Text="Save Draft",Width=165,Height=40};
         var create=new Button{Text="Create Open PO",Width=185,Height=40};
+        if(editId>0)
+        {
+            draft.Visible=false;
+            create.Text="Save PO Changes";
+        }
         footer.Controls.Add(cancel);footer.Controls.Add(create);footer.Controls.Add(draft);
         body.Controls.Add(footer,0,4);win.Controls.Add(body);win.CancelButton=cancel;
         void save(bool asDraft)
@@ -89,9 +117,14 @@ internal sealed partial class MainForm
                     items.Add(new PurchaseLine(product,quantity,Repository.Cents(cost)));
                 }
                 if(items.Count==0)throw new InvalidOperationException("Add at least one product.");
-                long id=FinancialOperations.CreatePurchaseOrder((long)vendor.SelectedValue!,
-                    items,on.Value,notes.Text,asDraft);
-                MessageBox.Show(win,$"Purchase order #{id} created as {(asDraft?"Draft":"Open")}.",
+                long id=editId;
+                if(editId>0)
+                    FinancialOperations.EditPurchaseOrder(editId,(long)vendor.SelectedValue!,items,on.Value,notes.Text);
+                else
+                    id=FinancialOperations.CreatePurchaseOrder((long)vendor.SelectedValue!,
+                        items,on.Value,notes.Text,asDraft);
+                MessageBox.Show(win,editId>0?$"Purchase order #{id} updated.":
+                    $"Purchase order #{id} created as {(asDraft?"Draft":"Open")}.",
                     "Purchase order saved",MessageBoxButtons.OK,MessageBoxIcon.Information);
                 win.DialogResult=DialogResult.OK;win.Close();
             }
