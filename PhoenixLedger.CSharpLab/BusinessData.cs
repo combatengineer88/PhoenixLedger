@@ -28,17 +28,24 @@ internal static class BusinessData
     public static string AccountingSql()
     {
         using var db=Store.Open();
-        if(!HasTable(db,"journal") || !HasTable(db,"journal_lines"))
-            return "SELECT '' AS Date, '' AS Memo, '' AS Source, '' AS Debits, '' AS Credits WHERE 1=0";
-        return """
-            SELECT j.id AS ID,j.posted_on AS Date,j.memo AS Memo,
-                j.source_type AS Source,
-                printf('$%.2f', COALESCE(SUM(l.debit),0)/100.0) AS Debits,
-                printf('$%.2f', COALESCE(SUM(l.credit),0)/100.0) AS Credits
-            FROM journal j LEFT JOIN journal_lines l ON l.journal_id=j.id
-            WHERE j.memo LIKE @q OR j.source_type LIKE @q OR j.posted_on LIKE @q
-            GROUP BY j.id ORDER BY j.id DESC LIMIT 1000
-            """;
+        string lab="""
+          SELECT j.id + 1000000000 AS ID,j.posted_on AS Date,j.memo AS Memo,
+                 j.source_type AS Source,
+                 printf('$%.2f',coalesce(sum(l.debit),0)/100.0) AS Debits,
+                 printf('$%.2f',coalesce(sum(l.credit),0)/100.0) AS Credits
+          FROM lab_fin_journal j JOIN lab_fin_lines l ON l.journal_id=j.id
+          GROUP BY j.id
+          """;
+        string legacy=HasTable(db,"journal")&&HasTable(db,"journal_lines")?"""
+          UNION ALL
+          SELECT j.id AS ID,j.posted_on AS Date,j.memo AS Memo,
+                 j.source_type AS Source,
+                 printf('$%.2f',coalesce(sum(l.debit),0)/100.0) AS Debits,
+                 printf('$%.2f',coalesce(sum(l.credit),0)/100.0) AS Credits
+          FROM journal j JOIN journal_lines l ON l.journal_id=j.id GROUP BY j.id
+          """:"";
+        return "SELECT * FROM ("+lab+legacy+
+            ") WHERE Memo LIKE @q OR Source LIKE @q OR Date LIKE @q ORDER BY Date DESC,ID DESC LIMIT 1500";
     }
 
     public static DataTable Report(string name)
