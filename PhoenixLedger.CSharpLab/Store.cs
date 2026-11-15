@@ -161,6 +161,23 @@ internal static class Store
                 if (!found.Contains(name)) Exec(db, $"ALTER TABLE {table} ADD COLUMN {name} {def}");
         }
         Exec(db, """
+            CREATE TABLE IF NOT EXISTS lab_bulk_product_changes(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                batch_id TEXT NOT NULL,
+                product_id INTEGER NOT NULL,
+                sku TEXT NOT NULL,
+                name TEXT NOT NULL,
+                reason TEXT NOT NULL,
+                old_price INTEGER NOT NULL,
+                new_price INTEGER NOT NULL,
+                old_cost INTEGER NOT NULL,
+                new_cost INTEGER NOT NULL,
+                old_supply_type TEXT NOT NULL,
+                new_supply_type TEXT NOT NULL,
+                changed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS idx_lab_bulk_product_changes
+                ON lab_bulk_product_changes(product_id,changed_at DESC);
             CREATE TABLE IF NOT EXISTS lab_catalog_archive_events(
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 entity_type TEXT NOT NULL,
