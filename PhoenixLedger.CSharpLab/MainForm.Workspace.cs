@@ -102,7 +102,9 @@ internal sealed partial class MainForm
             command("Record &invoice payment...",()=>{ShowPage("Estimates & Invoices");PayInvoiceOrSupplier(false);}),
             command("PDF &Layout Designer...",()=>OpenPdfDesigner("Invoice")),
             command("Record &budget...",ManageBudget),
-            command("Enter &bank transaction...",EnterBankTransaction)
+            command("Enter &bank transaction...",EnterBankTransaction),
+            command("New chart &account...",AddChartAccount),
+            command("Post manual &journal...",EnterManualJournal)
         );
         var help=submenu("&Help",
             command("GitHub source / user guide",()=>Process.Start(new ProcessStartInfo(
