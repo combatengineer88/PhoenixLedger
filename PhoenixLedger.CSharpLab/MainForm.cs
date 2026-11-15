@@ -232,6 +232,7 @@ internal sealed partial class MainForm : Form
         {
             AddAction("Add Product",()=>Edit(0),true);
             AddAction("Edit Product",()=>Edit(SelectedId()));
+            AddAction("Bulk Edit Products",OpenBulkProductEditor,false,190);
             AddAction("Scan / Adjust Stock",()=>Adjust(),false,195);
             AddAction("Import Excel",()=>ImportExcel(),false,170);
             AddCatalogButtons();
@@ -294,6 +295,7 @@ internal sealed partial class MainForm : Form
             };
             if(page=="Products / Catalog")
             {
+                context.Items.Add("Bulk edit selected / similar products",null,(_,_)=>Safe(OpenBulkProductEditor));
                 context.Items.Add("Scan / adjust stock",null,(_,_)=>Safe(Adjust));
                 context.Items.Add("Copy SKU",null,(_,_)=>Safe(()=>{
                     string? sku=CurrentCell("SKU");if(!string.IsNullOrEmpty(sku))Clipboard.SetText(sku);
