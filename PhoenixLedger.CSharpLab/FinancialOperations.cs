@@ -171,8 +171,8 @@ internal static class FinancialOperations
         using var db=Store.Open();using var tx=db.BeginTransaction();
         using(var cmd=Command(db,tx,"SELECT status FROM purchase_orders WHERE id=@id",("id",poId)))
         {
-            string? state=cmd.ExecuteScalar()?.ToString();
-            if(state is not ("Open" or "Partially Received"))
+            string? purchaseOrderStatus=cmd.ExecuteScalar()?.ToString();
+            if(purchaseOrderStatus is not ("Open" or "Partially Received"))
                 throw new InvalidOperationException("Approve the purchase order before receiving. Fully received POs cannot be received again.");
         }
         var lines=new List<PurchaseItem>();
