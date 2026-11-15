@@ -1,5 +1,5 @@
 #ifndef AppVersion
-  #define AppVersion "0.2.0"
+  #define AppVersion "0.2.1"
 #endif
 
 [Setup]
@@ -11,11 +11,16 @@ AppVerName=PhoenixLedger C# Lab {#AppVersion}
 AppPublisher=PhoenixLedger
 AppPublisherURL=https://github.com/combatengineer88/PhoenixLedger
 AppUpdatesURL=https://github.com/combatengineer88/PhoenixLedger/releases/latest
-DefaultDirName={localappdata}\Programs\PhoenixLedger CSharpLab
+; The auto path maps to native Program Files for all-users and LocalAppData\Programs for per-user installs.
+DefaultDirName={autopf64}\PhoenixLedger CSharpLab
 DefaultGroupName=PhoenixLedger C# Lab
 DisableDirPage=no
 UsePreviousAppDir=yes
-PrivilegesRequired=lowest
+; Ask whether to install for all users (administrator/UAC) or just this user.
+; All-users is the default to permit protected target folders such as Program Files.
+PrivilegesRequired=admin
+PrivilegesRequiredOverridesAllowed=dialog
+UsePreviousPrivileges=yes
 ArchitecturesAllowed=x64compatible
 WizardStyle=modern
 SetupIconFile=..\PhoenixLedger.CSharpLab\Assets\phoenixledger.ico
@@ -41,7 +46,9 @@ Name: "{autoprograms}\PhoenixLedger C# Lab"; Filename: "{app}\PhoenixLedger.CSha
 Name: "{autodesktop}\PhoenixLedger C# Lab"; Filename: "{app}\PhoenixLedger.CSharpLab.exe"; Tasks: desktopicon
 
 [Registry]
-Root: HKCU; Subkey: "Software\PhoenixLedger\CSharpLab"; ValueType: string; ValueName: "InstallDir"; ValueData: "{app}"; Flags: uninsdeletekey
+; HKA targets HKLM for an admin/all-users install and HKCU for per-user installs.
+; This remains in the 32-bit registry view for compatibility with v0.2.0 installs.
+Root: HKA; Subkey: "Software\PhoenixLedger\CSharpLab"; ValueType: string; ValueName: "InstallDir"; ValueData: "{app}"; Flags: uninsdeletekey
 
 [Run]
 Filename: "{app}\PhoenixLedger.CSharpLab.exe"; Flags: nowait runasoriginaluser

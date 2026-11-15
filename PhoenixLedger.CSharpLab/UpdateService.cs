@@ -33,26 +33,42 @@ internal static class UpdateService
 
     private static string SettingsFile => Path.Combine(Store.Root, "update-preferences.json");
 
-    public static string? InstalledDirectory
+    private sealed record InstallationLocation(string Directory, bool AllUsers);
+
+    public static string? InstalledDirectory => DetectInstallation()?.Directory;
+
+    private static InstallationLocation? DetectInstallation()
     {
-        get
+        string running = Path.TrimEndingDirectorySeparator(
+            Path.GetFullPath(AppContext.BaseDirectory));
+
+        // v0.2.0 registered the per-user install in HKCU (32-bit view).
+        // v0.2.1 can install for a single user or for all users.
+        // Read both registry views to support installations on either side
+        // of a future transition to 64-bit installer registry entries.
+        foreach (var hive in new[] { RegistryHive.CurrentUser, RegistryHive.LocalMachine })
         {
-            using var key = Registry.CurrentUser.OpenSubKey(InstallRegistryKey);
-            var path = key?.GetValue("InstallDir") as string;
-            if (string.IsNullOrWhiteSpace(path)) return null;
-            try
+            foreach (var view in new[] { RegistryView.Registry32, RegistryView.Registry64 })
             {
-                string installed = Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
-                string running = Path.TrimEndingDirectorySeparator(Path.GetFullPath(AppContext.BaseDirectory));
-                if (!string.Equals(installed, running, StringComparison.OrdinalIgnoreCase))
-                    return null;
-                return installed;
-            }
-            catch (Exception e) when (e is ArgumentException or NotSupportedException or IOException)
-            {
-                return null;
+                try
+                {
+                    using var baseKey = RegistryKey.OpenBaseKey(hive, view);
+                    using var key = baseKey.OpenSubKey(InstallRegistryKey);
+                    string? path = key?.GetValue("InstallDir") as string;
+                    if (string.IsNullOrWhiteSpace(path)) continue;
+
+                    string installed = Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
+                    if (string.Equals(installed, running, StringComparison.OrdinalIgnoreCase))
+                        return new InstallationLocation(installed, hive == RegistryHive.LocalMachine);
+                }
+                catch (Exception ex) when (ex is ArgumentException or NotSupportedException
+                    or IOException or UnauthorizedAccessException or System.Security.SecurityException)
+                {
+                    // A denied or malformed entry does not invalidate another installation.
+                }
             }
         }
+        return null;
     }
 
     public static UpdatePreferences LoadPreferences()
@@ -184,10 +200,12 @@ internal static class UpdateService
 
     public static void LaunchInstallerAndExit(Form form, string installerPath)
     {
-        string installDir = InstalledDirectory ??
+        InstallationLocation location = DetectInstallation() ??
             throw new InvalidOperationException(
                 "This copy is not installed using the PhoenixLedger Windows installer. " +
                 "Install the latest release manually first.");
+        string installDir = location.Directory;
+        string installMode = location.AllUsers ? "/ALLUSERS" : "/CURRENTUSER";
         if (!File.Exists(installerPath))
             throw new FileNotFoundException("The verified installer was not found.", installerPath);
 
@@ -199,8 +217,10 @@ internal static class UpdateService
             FileName = installerPath,
             UseShellExecute = true,
             WorkingDirectory = Path.GetDirectoryName(installerPath)!,
+            // Use the same install mode as the original installation.
+            // For all-users installs Windows will show a normal UAC consent prompt.
             Arguments = $"/SP- /VERYSILENT /SUPPRESSMSGBOXES /NORESTART " +
-                        $"/NORESTARTAPPLICATIONS /DIR=\"{installDir}\" /LOG=\"{logFile}\""
+                        $"/NORESTARTAPPLICATIONS {installMode} /DIR=\"{installDir}\" /LOG=\"{logFile}\""
         };
         if (Process.Start(start) is null)
             throw new InvalidOperationException("Could not start the installer.");
