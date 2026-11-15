@@ -413,6 +413,7 @@ internal sealed partial class MainForm
             settingsTabs.TabPages.AddRange(new[]{branding,updates,storage});
             updates.Controls.Add(updateView);
             updateView.Dock=DockStyle.Fill;
+            updateView.Visible=true;
             BuildBranding(branding);
             var maintenance=new FlowLayoutPanel
             {
