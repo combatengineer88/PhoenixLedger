@@ -95,6 +95,95 @@ internal static class FinancialSmokeTests
             var output=FinancialReports.Generate(report,start,end);
             if(output.Columns.Count==0)throw new Exception("Report has no columns: "+report);
         }
+        // Bulk product edit: filter similar SKUs by prefix and supplier, exclude
+        // archived products, preview individual prices and costs, and preserve
+        // historic document line values.
+        string bulkSuffix=Guid.NewGuid().ToString("N")[..8];
+        var bulkIds=new List<long>();
+        for(int i=1;i<=3;i++)
+        {
+            FinancialOperations.Execute(db,null,"""
+                INSERT INTO products(sku,name,supplier_id,price,cost,qty,stock_mode,
+                    reorder_cost_total,reorder_qty,inventory_unit_cost)
+                VALUES(@sku,@name,@supplier,1000,400,0,'stocked',12000,30,450)
+                """,("sku",$"BULK-{bulkSuffix}-{i}"),
+                ("name","Bulk Sample Tee "+i),("supplier",supplier));
+            bulkIds.Add(FinancialOperations.Scalar(db,null,
+                "SELECT max(id) FROM products"));
+        }
+        CatalogArchive.SetArchived("Products",bulkIds[2],true);
+        var matching=BulkProductOperations.Search("Bulk Sample Tee","BULK-"+bulkSuffix,supplier,"stocked");
+        if(matching.Count!=2||matching.Any(x=>x.Id==bulkIds[2]))
+            throw new Exception("Similar-products filter included archived or unrelated records.");
+
+        FinancialOperations.Execute(db,null,"""
+            INSERT INTO document_items(document_id,product_id,description,qty,unit_price,line_total)
+            VALUES(@d,@p,'Historical price sample',1,1000,1000)
+            """,("d",inv),("p",bulkIds[0]));
+
+        var changes=new BulkProductChanges(
+            true,BulkPriceMethod.AdjustPercent,15m,
+            true,BulkPriceMethod.SetAmount,6.25m,
+            true,"made_to_order","Updated sample apparel pricing");
+        var preview=BulkProductOperations.Preview(matching,changes);
+        if(preview.Count!=2||preview.Any(x=>x.NewPriceCents!=1150||
+            x.NewCostCents!=625||x.NewStockMode!="made_to_order"))
+            throw new Exception("Bulk changes preview did not compute expected values.");
+        if(BulkProductOperations.Apply(preview,changes.Reason)!=2)
+            throw new Exception("Bulk edit updated an unexpected number of products.");
+        foreach(long id in bulkIds.Take(2))
+        {
+            using var actual=db.CreateCommand();
+            actual.CommandText="""
+                SELECT price,cost,stock_mode,reorder_cost_total,inventory_unit_cost
+                FROM products WHERE id=@id
+                """;
+            actual.Parameters.AddWithValue("@id",id);
+            using var record=actual.ExecuteReader();
+            if(!record.Read()||record.GetInt64(0)!=1150||record.GetInt64(1)!=625||
+                record.GetString(2)!="made_to_order"||record.GetInt64(3)!=18750||
+                record.GetInt64(4)!=450)
+                throw new Exception("Bulk update failed to preserve inventory basis or synchronize reorder total.");
+        }
+        if(FinancialOperations.Scalar(db,null,"""
+            SELECT count(*) FROM lab_bulk_product_changes WHERE product_id IN (@a,@b)
+                AND old_price=1000 AND new_price=1150 AND old_cost=400 AND new_cost=625
+            """,("a",bulkIds[0]),("b",bulkIds[1]))!=2)
+            throw new Exception("Bulk before/after price audit missing.");
+        if(FinancialOperations.Scalar(db,null,
+            "SELECT unit_price FROM document_items WHERE product_id=@id",("id",bulkIds[0]))!=1000)
+            throw new Exception("Bulk edit changed historic invoice/estimate prices.");
+        if(FinancialOperations.Scalar(db,null,
+            "SELECT cost FROM products WHERE id=@id",("id",bulkIds[2]))!=400)
+            throw new Exception("Archived item changed during bulk update.");
+
+        var second=BulkProductOperations.Search("Bulk Sample Tee","BULK-"+bulkSuffix,supplier,"made_to_order");
+        var attempted=BulkProductOperations.Preview(second,new BulkProductChanges(
+            true,BulkPriceMethod.SetAmount,20m,
+            false,BulkPriceMethod.SetAmount,0m,
+            false,"made_to_order","Test atomic conflict"));
+        // Simulate another editor modifying one selected product after preview.
+        FinancialOperations.Execute(db,null,"UPDATE products SET price=1200 WHERE id=@id",
+            ("id",bulkIds[1]));
+        try
+        {
+            BulkProductOperations.Apply(attempted,"Reject stale preview");
+            throw new Exception("Stale bulk preview was accepted.");
+        }
+        catch(InvalidOperationException ex) when(ex.Message.Contains("changed since the preview")) { }
+        if(FinancialOperations.Scalar(db,null,"SELECT price FROM products WHERE id=@id",("id",bulkIds[0]))!=1150)
+            throw new Exception("Atomic bulk edit was not rolled back after conflict.");
+
+        var stockedItem=BulkProductOperations.Search("DEMO-TEE-BLK").First();
+        try
+        {
+            BulkProductOperations.Preview(new[]{stockedItem},new BulkProductChanges(
+                false,BulkPriceMethod.SetAmount,0m,false,BulkPriceMethod.SetAmount,0m,
+                true,"supplier_direct","Cannot change stocked product with inventory"));
+            throw new Exception("Bulk edit allowed changing supply type with stock on hand.");
+        }
+        catch(InvalidOperationException ex) when(ex.Message.Contains("units remain in inventory")) { }
+
         foreach(string kind in new[]{"Invoice","Estimate","Purchase Order","Report"})
         {
             string filename=Path.Combine(Path.GetTempPath(),"PhoenixLedger_CI_"+kind.Replace(' ','_')+".pdf");
