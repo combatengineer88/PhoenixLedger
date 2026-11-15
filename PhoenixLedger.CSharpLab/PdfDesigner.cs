@@ -140,7 +140,22 @@ internal sealed class PdfDesigner : Form
                 };
                 label.MouseDown+=(_,e)=>{
                     if(e.Button!=MouseButtons.Left)return;
-                    Select(item);dragStart=Control.MousePosition;origin=new Point(item.X,item.Y);dragging=true;
+                    // Do not redraw the canvas during mouse-down: doing so would
+                    // dispose the control before it can receive MouseMove.
+                    selected=item;
+                    changing=true;
+                    try
+                    {
+                        layers.SelectedItem=item;
+                        properties.SelectedObject=item;
+                    }
+                    finally {changing=false;}
+                    label.BackColor=Color.FromArgb(227,240,255);
+                    label.ForeColor=Color.FromArgb(25,104,195);
+                    dragStart=Control.MousePosition;
+                    origin=new Point(item.X,item.Y);
+                    dragging=true;
+                    label.Capture=true;
                 };
                 label.MouseMove+=(_,e)=>{
                     if(!dragging||selected!=item)return;
@@ -150,7 +165,14 @@ internal sealed class PdfDesigner : Form
                     label.Location=new Point(item.X,item.Y);
                     properties.Refresh();
                 };
-                label.MouseUp+=(_,_)=>{dragging=false;};
+                label.MouseUp+=(_,_)=>{
+                    if(dragging&&selected==item)
+                    {
+                        dragging=false;
+                        label.Capture=false;
+                        RefreshCanvas();
+                    }
+                };
                 page.Controls.Add(label);
             }
             if(selected!=null)
