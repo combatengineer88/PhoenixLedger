@@ -42,6 +42,8 @@ internal static class Store
         using var conn = Open();
         Schema(conn);
         if (created) Seed(conn);
+        conn.Close();
+        FinancialOperations.Initialize();
     }
 
     public static void Schema(SqliteConnection db)
