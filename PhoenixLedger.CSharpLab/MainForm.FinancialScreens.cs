@@ -68,7 +68,7 @@ internal sealed partial class MainForm
         panel.RowStyles.Add(new RowStyle(SizeType.Percent,100));
         var month=new DateTimePicker{Format=DateTimePickerFormat.Custom,CustomFormat="yyyy-MM",
             ShowUpDown=true,Width=170};
-        var account=new ComboBox{DropDownStyle=ComboBoxStyle.DropDownList,Dock=DockStyle.Fill};
+        var account=new ComboBox{DropDownStyle=ComboBoxStyle.DropDown,Dock=DockStyle.Fill};
         using(var db=Store.Open())
         using(var cmd=db.CreateCommand())
         {
@@ -76,6 +76,11 @@ internal sealed partial class MainForm
             using var r=cmd.ExecuteReader();
             while(r.Read())account.Items.Add(r.GetString(0));
         }
+        foreach(var name in FinancialReports.Ledger(DateTime.Today).Select(x=>x.Account)
+            .Where(x=>x.Contains("Expense",StringComparison.OrdinalIgnoreCase) ||
+                      x.Contains("Revenue",StringComparison.OrdinalIgnoreCase))
+            .Distinct(StringComparer.OrdinalIgnoreCase))
+            if(!account.Items.Contains(name))account.Items.Add(name);
         if(account.Items.Count>0)account.SelectedIndex=0;
         var amount=new NumericUpDown{DecimalPlaces=2,Maximum=999999999,Minimum=0,ThousandsSeparator=true,Dock=DockStyle.Fill};
         (string,Control)[] fields={("Budget month",month),("Income / Expense account",account),("Budget amount",amount)};
