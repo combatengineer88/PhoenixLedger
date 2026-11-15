@@ -9,6 +9,15 @@ namespace PhoenixLedger.CSharpLab;
 
 internal sealed partial class MainForm
 {
+    internal void SmokeNavigate()
+    {
+        foreach (string page in Pages) ShowPage(page);
+        ShowPage("Settings / Updates");
+        if (settingsTabs==null || updateView.Parent is not TabPage)
+            throw new InvalidOperationException("Settings / Updates page did not initialize.");
+        ShowPage("Home");
+    }
+
     private TabControl? settingsTabs;
     private DataGridView? reportGrid;
 
@@ -133,7 +142,8 @@ internal sealed partial class MainForm
 
     private void RefreshCurrent()
     {
-        if(current is "Home" or "Dashboard")BuildDashboard();
+        if(current=="Home")BuildHomeWorkspace();
+        else if(current=="Dashboard")BuildDashboard();
         else if(current=="Reports")BuildBusinessPage("Reports");
         else if(current is "Administration" or "Settings / Updates")BuildBusinessPage(current);
         else RefreshGrid();
