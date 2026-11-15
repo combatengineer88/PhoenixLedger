@@ -99,7 +99,7 @@ internal sealed partial class MainForm : Form
         search.Location=new Point(68,10);searchPanel.Controls.Add(search);
         searchPanel.Controls.Add(archivedToggle);
         archivedToggle.CheckedChanged+=(_,_)=>{
-            if(CatalogArchive.IsCatalog(CanonicalPage(current)) && grid.Visible)
+            if(CatalogArchive.IsCatalog(CanonicalPage(current)))
             {
                 RefreshGrid();
                 UpdateArchiveButtons();
