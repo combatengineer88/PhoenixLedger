@@ -81,7 +81,7 @@ internal static class Editors
         var mode=new ComboBox{DropDownStyle=ComboBoxStyle.DropDownList};
         mode.Items.AddRange(new object[]{"stocked","made_to_order","supplier_direct"});
         mode.SelectedItem=model.StockMode is "stocked" or "made_to_order" or "supplier_direct"?model.StockMode:"stocked";
-        var suppliers=Repository.SupplierOptions();
+        var suppliers=Repository.SupplierOptions(model.SupplierId);
         var supplier=new ComboBox {DropDownStyle=ComboBoxStyle.DropDownList};
         supplier.Items.Add("(No supplier)");
         foreach(var entry in suppliers)supplier.Items.Add(entry.Name);
