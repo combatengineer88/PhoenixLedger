@@ -247,10 +247,10 @@ internal static class FinancialReports
             var t=Table("Purchase order","Supplier","Due date","Outstanding","Current","1–30","31–60","61–90","Over 90");
             using var db=Store.Open();using var cmd=db.CreateCommand();
             string legacyPayable=BusinessData.HasTable(db,"journal")&&BusinessData.HasTable(db,"journal_lines")?
-                """(SELECT coalesce(sum(l.credit-l.debit),0)
+                @"(SELECT coalesce(sum(l.credit-l.debit),0)
                     FROM journal j JOIN journal_lines l ON l.journal_id=j.id
                     WHERE j.source_type='po' AND j.source_id=po.id AND l.account='Accounts Payable'
-                      AND substr(j.posted_on,1,10)<=@end)""":"0";
+                      AND substr(j.posted_on,1,10)<=@end)":"0";
             cmd.CommandText=$"""
                 SELECT po.id,coalesce(s.name,''),po.ordered_on,
                        coalesce((SELECT sum(r.total) FROM po_receipts r WHERE r.po_id=po.id AND substr(r.received_on,1,10)<=@end),0)
