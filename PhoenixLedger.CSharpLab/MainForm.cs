@@ -225,6 +225,8 @@ internal sealed partial class MainForm : Form
         else if(page=="Accounting")
         {
             AddAction("View Journal Lines",()=>ViewAccountingLines(),true,175);
+            AddAction("Add Account",AddChartAccount,false,145);
+            AddAction("Post Journal Entry",EnterManualJournal,false,195);
             AddAction("Financial Reports",()=>ShowPage("Reports"),false,170);
             AddAction("Manage Budget",ManageBudget,false,160);
             AddAction("Bank Statement Entry",EnterBankTransaction,false,190);
