@@ -286,7 +286,7 @@ internal sealed class BulkProductEditor : Form
                 "Confirm Bulk Product Edit",MessageBoxButtons.YesNo,MessageBoxIcon.Warning,
                 MessageBoxDefaultButton.Button2)!=DialogResult.Yes)return;
 
-            string dir=Store.Backups;
+            string dir=Path.Combine(Store.Root,"backups");
             Directory.CreateDirectory(dir);
             string backup=Path.Combine(dir,
                 $"lab_before_bulk_products_{DateTime.Now:yyyyMMdd_HHmmss_fff}_{Guid.NewGuid():N}.db");
