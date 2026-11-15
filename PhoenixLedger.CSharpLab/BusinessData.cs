@@ -127,34 +127,115 @@ internal static class BusinessData
         return (date,r.GetString(1),r.GetString(2),r.GetString(3),Repository.Dollars(r.GetInt64(4)));
     }
 
+    /// <summary>
+    /// Expenses always have a balanced journal posting. Imported Python databases
+    /// may already have an INSERT trigger, so check before writing a second one.
+    /// Edits and removals are audited through compensating entries.
+    /// </summary>
     public static void SaveExpense(long id,DateTime date,string category,string vendor,string description,decimal amount)
     {
         if(string.IsNullOrWhiteSpace(category))throw new InvalidOperationException("Expense category is required.");
         if(amount<0)throw new InvalidOperationException("Expense cannot be negative.");
         long cents=Repository.Cents(amount);
-        using var db=Store.Open();using var cmd=db.CreateCommand();
-        cmd.CommandText=id>0?"""
-            UPDATE expenses SET spent_on=@date,category=@category,vendor=@vendor,
-                description=@description,amount=@amount WHERE id=@id
-            """:"""
-            INSERT INTO expenses(spent_on,category,vendor,description,amount)
-                VALUES(@date,@category,@vendor,@description,@amount)
-            """;
-        cmd.Parameters.AddWithValue("@date",date.ToString("yyyy-MM-dd",CultureInfo.InvariantCulture));
-        cmd.Parameters.AddWithValue("@category",category.Trim());
-        cmd.Parameters.AddWithValue("@vendor",vendor.Trim());
-        cmd.Parameters.AddWithValue("@description",description.Trim());
-        cmd.Parameters.AddWithValue("@amount",cents);
-        cmd.Parameters.AddWithValue("@id",id);
-        if(cmd.ExecuteNonQuery()!=1)throw new InvalidOperationException("Expense was not saved.");
+        using var db=Store.Open();using var tx=db.BeginTransaction();
+        long oldCents=0;string oldCategory="";bool oldPosted=false;string oldDate="";
+        if(id>0)
+        {
+            using var previous=db.CreateCommand();previous.Transaction=tx;
+            previous.CommandText="SELECT amount,category,spent_on FROM expenses WHERE id=@id";
+            previous.Parameters.AddWithValue("@id",id);
+            using var r=previous.ExecuteReader();
+            if(!r.Read())throw new InvalidOperationException("Expense record was not found.");
+            oldCents=r.GetInt64(0);oldCategory=r.GetString(1);oldDate=r.GetString(2);
+            r.Close();
+            oldPosted=FinancialOperations.Scalar(db,tx,
+                "SELECT count(*) FROM lab_fin_journal WHERE source_type='lab_expense' AND source_id=@id",("id",id))>0 ||
+                (HasTable(db,"journal")&&FinancialOperations.Scalar(db,tx,
+                    "SELECT count(*) FROM journal WHERE source_type='expense' AND source_id=@id",("id",id))>0);
+        }
+        string operation=id==0?"New":"Edit";
+        using(var cmd=db.CreateCommand())
+        {
+            cmd.Transaction=tx;
+            cmd.CommandText=id>0?"""
+                UPDATE expenses SET spent_on=@date,category=@category,vendor=@vendor,
+                    description=@description,amount=@amount WHERE id=@id
+                """:"""
+                INSERT INTO expenses(spent_on,category,vendor,description,amount)
+                    VALUES(@date,@category,@vendor,@description,@amount)
+                """;
+            cmd.Parameters.AddWithValue("@date",date.ToString("yyyy-MM-dd",CultureInfo.InvariantCulture));
+            cmd.Parameters.AddWithValue("@category",category.Trim());
+            cmd.Parameters.AddWithValue("@vendor",vendor.Trim());
+            cmd.Parameters.AddWithValue("@description",description.Trim());
+            cmd.Parameters.AddWithValue("@amount",cents);
+            cmd.Parameters.AddWithValue("@id",id);
+            if(cmd.ExecuteNonQuery()!=1)throw new InvalidOperationException("Expense was not saved.");
+        }
+        if(id==0)id=FinancialOperations.Scalar(db,tx,"SELECT last_insert_rowid()");
+        FinancialOperations.Execute(db,tx,"""
+            INSERT INTO lab_fin_expense_changes(expense_id,changed_on,old_amount,new_amount,
+                old_category,new_category,operation)
+            VALUES(@id,@date,@old,@new,@oc,@nc,@op)
+            """,("id",id),("date",DateTime.Today.ToString("yyyy-MM-dd")),
+            ("old",oldCents),("new",cents),("oc",oldCategory),("nc",category.Trim()),("op",operation));
+        long audit=FinancialOperations.Scalar(db,tx,"SELECT last_insert_rowid()");
+        bool legacyPosted=HasTable(db,"journal")&&FinancialOperations.Scalar(db,tx,
+            "SELECT count(*) FROM journal WHERE source_type='expense' AND source_id=@id",("id",id))>0;
+        if(operation=="New")
+        {
+            if(cents>0&&!legacyPosted)
+                FinancialOperations.Post(db,tx,date,$"Expense: {category}","lab_expense",id,
+                    ("Expense: "+category.Trim(),cents,0),("Cash",0,cents));
+        }
+        else if(oldCents!=cents||oldCategory!=category.Trim()||oldDate!=date.ToString("yyyy-MM-dd"))
+        {
+            var items=new List<(string account,long debit,long credit)>();
+            if(oldPosted&&oldCents>0)
+            {
+                items.Add(("Cash",oldCents,0));
+                items.Add(("Expense: "+oldCategory,0,oldCents));
+            }
+            if(cents>0)
+            {
+                items.Add(("Expense: "+category.Trim(),cents,0));
+                items.Add(("Cash",0,cents));
+            }
+            if(items.Count>0)
+                FinancialOperations.Post(db,tx,DateTime.Today,$"Expense #{id} amended",
+                    "lab_expense_revision",audit,items.ToArray());
+        }
+        tx.Commit();
     }
 
     public static void DeleteExpense(long id)
     {
-        using var db=Store.Open();using var cmd=db.CreateCommand();
-        cmd.CommandText="DELETE FROM expenses WHERE id=@id";
-        cmd.Parameters.AddWithValue("@id",id);
-        if(cmd.ExecuteNonQuery()!=1)throw new InvalidOperationException("Expense was not found.");
+        using var db=Store.Open();using var tx=db.BeginTransaction();
+        long amount;string category;
+        using(var c=db.CreateCommand())
+        {
+            c.Transaction=tx;
+            c.CommandText="SELECT amount,category FROM expenses WHERE id=@id";
+            c.Parameters.AddWithValue("@id",id);
+            using var r=c.ExecuteReader();
+            if(!r.Read())throw new InvalidOperationException("Expense not found.");
+            amount=r.GetInt64(0);category=r.GetString(1);
+        }
+        bool posted=FinancialOperations.Scalar(db,tx,
+            "SELECT count(*) FROM lab_fin_journal WHERE source_type='lab_expense' AND source_id=@id",("id",id))>0
+            ||(HasTable(db,"journal")&&FinancialOperations.Scalar(db,tx,
+                "SELECT count(*) FROM journal WHERE source_type='expense' AND source_id=@id",("id",id))>0);
+        FinancialOperations.Execute(db,tx,"""
+            INSERT INTO lab_fin_expense_changes(expense_id,changed_on,old_amount,new_amount,old_category,new_category,operation)
+            VALUES(@id,@d,@old,0,@name,'','Delete')
+            """,("id",id),("d",DateTime.Today.ToString("yyyy-MM-dd")),("old",amount),("name",category));
+        long audit=FinancialOperations.Scalar(db,tx,"SELECT last_insert_rowid()");
+        if(posted&&amount>0)
+            FinancialOperations.Post(db,tx,DateTime.Today,$"Expense #{id} reversed on deletion",
+                "lab_expense_revision",audit,("Cash",amount,0),("Expense: "+category,0,amount));
+        if(FinancialOperations.Execute(db,tx,"DELETE FROM expenses WHERE id=@id",("id",id))!=1)
+            throw new InvalidOperationException("Expense not found.");
+        tx.Commit();
     }
 
     public static void BackupTo(string destination)
