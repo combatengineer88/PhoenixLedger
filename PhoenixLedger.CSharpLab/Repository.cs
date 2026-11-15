@@ -58,7 +58,7 @@ internal static class Repository
     public static long Cents(decimal number) => checked((long)decimal.Round(number * 100m, 0, MidpointRounding.AwayFromZero));
     public static decimal Dollars(long cents) => cents / 100m;
 
-    public static DataTable Table(string section, string search = "")
+    public static DataTable Table(string section, string search = "", bool archived = false)
     {
         string sql = section switch
         {
@@ -72,9 +72,11 @@ internal static class Repository
                   p.qty AS Stock, p.reorder_point AS 'Reorder at', p.reorder_qty AS 'Reorder Qty',
                   p.stock_mode AS Type, p.bin_location AS Bin,
                   CASE WHEN COALESCE(p.image_path,'')<>'' THEN 'Yes' ELSE 'No' END AS Image,
-                  CASE WHEN COALESCE(p.barcode_image_path,'')<>'' THEN 'Yes' ELSE 'No' END AS 'Barcode Image'
+                  CASE WHEN COALESCE(p.barcode_image_path,'')<>'' THEN 'Yes' ELSE 'No' END AS 'Barcode Image',
+                  COALESCE(p.archived_at,'') AS 'Archived On'
                 FROM products p LEFT JOIN suppliers s ON s.id=p.supplier_id
-                WHERE p.sku LIKE @q OR p.name LIKE @q OR COALESCE(p.barcode,'') LIKE @q OR COALESCE(s.name,'') LIKE @q
+                WHERE p.is_archived=@archived AND
+                  (p.sku LIKE @q OR p.name LIKE @q OR COALESCE(p.barcode,'') LIKE @q OR COALESCE(s.name,'') LIKE @q)
                 ORDER BY p.name COLLATE NOCASE,p.id
                 """,
             "Suppliers" => """
@@ -82,17 +84,21 @@ internal static class Repository
                   COALESCE(s.email,'') AS Email,COALESCE(s.phone,'') AS Phone,
                   COALESCE(s.city,'') AS City,COALESCE(s.state,'') AS State,COALESCE(s.zip_code,'') AS ZIP,
                   (SELECT count(*) FROM products p WHERE p.supplier_id=s.id) AS Products,
-                  (SELECT count(*) FROM purchase_orders po WHERE po.supplier_id=s.id) AS 'Purchase Orders'
+                  (SELECT count(*) FROM purchase_orders po WHERE po.supplier_id=s.id) AS 'Purchase Orders',
+                  COALESCE(s.archived_at,'') AS 'Archived On'
                 FROM suppliers s
-                WHERE s.name LIKE @q OR COALESCE(s.contact_name,'') LIKE @q OR COALESCE(s.email,'') LIKE @q
+                WHERE s.is_archived=@archived AND
+                  (s.name LIKE @q OR COALESCE(s.contact_name,'') LIKE @q OR COALESCE(s.email,'') LIKE @q)
                 ORDER BY s.name COLLATE NOCASE,s.id
                 """,
             "Customers" => """
                 SELECT id AS ID,name AS Name,COALESCE(email,'') AS Email,COALESCE(phone,'') AS Phone,
                 COALESCE(address,'') AS Address,COALESCE(city,'') AS City,
                 COALESCE(state,'') AS State,COALESCE(zip_code,'') AS ZIP,
-                CASE WHEN tax_exempt=1 THEN 'Yes' ELSE 'No' END AS 'Tax Exempt'
-                FROM customers WHERE name LIKE @q OR COALESCE(email,'') LIKE @q OR COALESCE(city,'') LIKE @q
+                CASE WHEN tax_exempt=1 THEN 'Yes' ELSE 'No' END AS 'Tax Exempt',
+                COALESCE(archived_at,'') AS 'Archived On'
+                FROM customers WHERE is_archived=@archived AND
+                  (name LIKE @q OR COALESCE(email,'') LIKE @q OR COALESCE(city,'') LIKE @q)
                 ORDER BY name COLLATE NOCASE,id
                 """,
             "Purchase Orders" => """
@@ -127,6 +133,8 @@ internal static class Repository
         command.CommandText = sql;
         if (sql.Contains("@q", StringComparison.Ordinal))
             command.Parameters.AddWithValue("@q", "%" + search.Trim() + "%");
+        if (sql.Contains("@archived", StringComparison.Ordinal))
+            command.Parameters.AddWithValue("@archived", archived ? 1 : 0);
         using var reader = command.ExecuteReader();
         var result = new DataTable(); result.Load(reader);
         return result;
@@ -160,13 +168,13 @@ internal static class Repository
         using var db = Store.Open();
         int count(string table)
         {
-            using var x = db.CreateCommand(); x.CommandText = $"SELECT count(*) FROM {table}";
+            using var x = db.CreateCommand(); x.CommandText = $"SELECT count(*) FROM {table} WHERE is_archived=0";
             return Convert.ToInt32(x.ExecuteScalar(),CultureInfo.InvariantCulture);
         }
         using var cmd = db.CreateCommand();
         cmd.CommandText = """
-            SELECT SUM(CASE WHEN stock_mode='stocked' AND qty<=reorder_point THEN 1 ELSE 0 END),
-              SUM(CASE WHEN stock_mode='stocked' AND qty=0 THEN 1 ELSE 0 END),
+            SELECT SUM(CASE WHEN is_archived=0 AND stock_mode='stocked' AND qty<=reorder_point THEN 1 ELSE 0 END),
+              SUM(CASE WHEN is_archived=0 AND stock_mode='stocked' AND qty=0 THEN 1 ELSE 0 END),
               COALESCE(SUM(CASE WHEN stock_mode='stocked' THEN qty*COALESCE(inventory_unit_cost,cost) ELSE 0 END),0)
             FROM products
             """;
@@ -176,10 +184,15 @@ internal static class Repository
         return (count("products"),count("suppliers"),count("customers"),low,outStock,value);
     }
 
-    public static List<(long Id,string Name)> SupplierOptions()
+    public static List<(long Id,string Name)> SupplierOptions(long? includeArchivedId=null)
     {
         using var db=Store.Open(); using var cmd=db.CreateCommand();
-        cmd.CommandText="SELECT id,name FROM suppliers ORDER BY name COLLATE NOCASE";
+        cmd.CommandText="""
+            SELECT id, CASE WHEN is_archived=1 THEN name || ' (Archived)' ELSE name END
+            FROM suppliers WHERE is_archived=0 OR id=@prior
+            ORDER BY name COLLATE NOCASE
+            """;
+        cmd.Parameters.AddWithValue("@prior",includeArchivedId.HasValue?(object)includeArchivedId.Value:DBNull.Value);
         var values=new List<(long,string)>();
         using var r=cmd.ExecuteReader();
         while (r.Read()) values.Add((r.GetInt64(0),r.GetString(1)));
@@ -220,7 +233,7 @@ internal static class Repository
         int oldStock=0;
         if(p.Id>0)
         {
-            using var old=db.CreateCommand();old.Transaction=tx;old.CommandText="SELECT qty FROM products WHERE id=@id";
+            using var old=db.CreateCommand();old.Transaction=tx;old.CommandText="SELECT qty FROM products WHERE id=@id AND is_archived=0";
             old.Parameters.AddWithValue("@id",p.Id);
             object? existing=old.ExecuteScalar();if(existing is null)throw new InvalidOperationException("Product no longer exists.");
             oldStock=Convert.ToInt32(existing,CultureInfo.InvariantCulture);
@@ -239,7 +252,7 @@ internal static class Repository
                     UPDATE products SET sku=@sku,name=@name,description=@desc,barcode=@barcode,
                       supplier_id=@supplier,price=@price,cost=@cost,qty=@qty,reorder_point=@point,
                       reorder_qty=@reorder,reorder_cost_total=@bulk,stock_mode=@mode,bin_location=@bin,
-                      image_path=@image,barcode_image_path=@barcodeimg WHERE id=@id
+                      image_path=@image,barcode_image_path=@barcodeimg WHERE id=@id AND is_archived=0
                     """;
             Bind(cmd,("sku",p.Sku.Trim()),("name",p.Name.Trim()),("desc",p.Description.Trim()),
                 ("barcode",p.Barcode.Trim()),("supplier",p.SupplierId),("price",Cents(p.Price)),("cost",Cents(p.Cost)),
@@ -296,7 +309,7 @@ internal static class Repository
         long id;string name;int current;
         using (var cmd=db.CreateCommand())
         {
-            cmd.Transaction=tx;cmd.CommandText="SELECT id,name,qty FROM products WHERE sku=@code COLLATE NOCASE OR barcode=@code COLLATE NOCASE LIMIT 2";
+            cmd.Transaction=tx;cmd.CommandText="SELECT id,name,qty FROM products WHERE is_archived=0 AND (sku=@code COLLATE NOCASE OR barcode=@code COLLATE NOCASE) LIMIT 2";
             cmd.Parameters.AddWithValue("@code",skuOrBarcode.Trim());
             using var reader=cmd.ExecuteReader();if(!reader.Read())throw new InvalidOperationException("No product matches that SKU/barcode.");
             id=reader.GetInt64(0);name=reader.GetString(1);current=reader.GetInt32(2);
@@ -331,7 +344,7 @@ internal static class Repository
         using var db=Store.Open();using var cmd=db.CreateCommand();
         cmd.CommandText=s.Id==0?
             "INSERT INTO suppliers(name,contact_name,email,phone,website,address,city,state,zip_code,notes) VALUES(@name,@contact,@email,@phone,@website,@address,@city,@state,@zip,@notes)":
-            "UPDATE suppliers SET name=@name,contact_name=@contact,email=@email,phone=@phone,website=@website,address=@address,city=@city,state=@state,zip_code=@zip,notes=@notes WHERE id=@id";
+            "UPDATE suppliers SET name=@name,contact_name=@contact,email=@email,phone=@phone,website=@website,address=@address,city=@city,state=@state,zip_code=@zip,notes=@notes WHERE id=@id AND is_archived=0";
         Bind(cmd,("name",s.Name.Trim()),("contact",s.Contact),("email",s.Email),
             ("phone",s.Phone),("website",s.Website),("address",s.Address),("city",s.City),
             ("state",s.State),("zip",s.Zip),("notes",s.Notes));
@@ -353,7 +366,7 @@ internal static class Repository
         using var db=Store.Open();using var cmd=db.CreateCommand();
         cmd.CommandText=c.Id==0?
             "INSERT INTO customers(name,email,phone,address,city,state,zip_code,notes,tax_exempt) VALUES(@name,@email,@phone,@address,@city,@state,@zip,@notes,@tax)":
-            "UPDATE customers SET name=@name,email=@email,phone=@phone,address=@address,city=@city,state=@state,zip_code=@zip,notes=@notes,tax_exempt=@tax WHERE id=@id";
+            "UPDATE customers SET name=@name,email=@email,phone=@phone,address=@address,city=@city,state=@state,zip_code=@zip,notes=@notes,tax_exempt=@tax WHERE id=@id AND is_archived=0";
         Bind(cmd,("name",c.Name.Trim()),("email",c.Email),("phone",c.Phone),
             ("address",c.Address),("city",c.City),("state",c.State),("zip",c.Zip),("notes",c.Notes),
             ("tax",c.TaxExempt?1:0));
