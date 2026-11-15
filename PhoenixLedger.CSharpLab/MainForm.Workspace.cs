@@ -12,6 +12,7 @@ internal sealed partial class MainForm
     internal void SmokeNavigate()
     {
         foreach (string page in Pages) ShowPage(page);
+        SmokeCustomerGridBinding();
         ShowPage("Settings / Updates");
         if (settingsTabs==null || updateView.Parent is not TabPage)
             throw new InvalidOperationException("Settings / Updates page did not initialize.");
