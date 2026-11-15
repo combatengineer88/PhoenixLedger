@@ -46,6 +46,14 @@ jobs:
           dotnet run --project PhoenixLedger.CSharpLab/PhoenixLedger.CSharpLab.csproj --no-build --configuration Release -- --smoke-ui
           if ($LASTEXITCODE -ne 0) { throw "Windows UI smoke test failed." }
 
+      - name: Compile and smoke-test detached updater
+        shell: pwsh
+        run: |
+          dotnet build PhoenixLedger.UpdateAgent/PhoenixLedger.UpdateAgent.csproj --configuration Release
+          if ($LASTEXITCODE -ne 0) { throw "Update Agent compilation failed." }
+          dotnet run --project PhoenixLedger.UpdateAgent/PhoenixLedger.UpdateAgent.csproj --no-build --configuration Release -- --self-test
+          if ($LASTEXITCODE -ne 0) { throw "Update Agent verification and file-handle smoke test failed." }
+
       - name: Publish self-contained Windows x64 application
         shell: pwsh
         run: |
@@ -57,6 +65,21 @@ jobs:
             -p:IncludeNativeLibrariesForSelfExtract=true `
             --output dist/win-x64
           if ($LASTEXITCODE -ne 0) { throw "Publishing failed." }
+
+      - name: Publish self-contained detached update agent
+        shell: pwsh
+        run: |
+          dotnet publish PhoenixLedger.UpdateAgent/PhoenixLedger.UpdateAgent.csproj `
+            --configuration Release `
+            --runtime win-x64 `
+            --self-contained true `
+            -p:PublishSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            --output dist/update-agent
+          if ($LASTEXITCODE -ne 0) { throw "Detached update agent publish failed." }
+          $exe = "dist/update-agent/PhoenixLedger.UpdateAgent.exe"
+          if (!(Test-Path $exe)) { throw "Updater EXE is missing." }
+          Copy-Item -LiteralPath $exe -Destination "dist/win-x64/PhoenixLedger.UpdateAgent.exe" -Force
 
       - name: Install Inno Setup
         shell: pwsh
