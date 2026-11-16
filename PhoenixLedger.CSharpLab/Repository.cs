@@ -110,8 +110,13 @@ internal static class Repository
                 """,
             "Sales Documents" => """
                 SELECT d.id AS ID,d.kind AS Type,c.name AS Customer,d.created AS Date,
-                  d.status AS Status,printf('$%.2f',d.total/100.0) AS Total,COALESCE(d.notes,'') AS Notes
+                  d.status AS Status,printf('$%.2f',d.total/100.0) AS Total,
+                  COALESCE(CAST(link.invoice_id AS TEXT),'') AS 'Converted Invoice',
+                  COALESCE(CAST(origin.estimate_id AS TEXT),'') AS 'Source Estimate',
+                  COALESCE(d.notes,'') AS Notes
                 FROM documents d LEFT JOIN customers c ON c.id=d.customer_id
+                LEFT JOIN lab_estimate_invoice_links link ON link.estimate_id=d.id
+                LEFT JOIN lab_estimate_invoice_links origin ON origin.invoice_id=d.id
                 WHERE CAST(d.id AS TEXT) LIKE @q OR COALESCE(c.name,'') LIKE @q OR d.kind LIKE @q
                 ORDER BY d.id DESC
                 """,
