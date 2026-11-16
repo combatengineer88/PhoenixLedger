@@ -28,6 +28,16 @@ internal sealed partial class MainForm
         Margin=new Padding(5,11,5,4)
     };
 
+    internal static Dictionary<long,long> PurchaseOrderSavedCosts()
+    {
+        using var db=Store.Open();using var cmd=db.CreateCommand();
+        cmd.CommandText="SELECT id,cost FROM products WHERE is_archived=0";
+        var costs=new Dictionary<long,long>();
+        using var r=cmd.ExecuteReader();
+        while(r.Read())costs[r.GetInt64(0)]=r.GetInt64(1);
+        return costs;
+    }
+
     private void NewPurchaseOrder()=>PurchaseOrderEditor(0);
     private void EditPurchaseOrder()=>PurchaseOrderEditor(SelectedId());
 
@@ -44,6 +54,7 @@ internal sealed partial class MainForm
     {
         var suppliers=Options("suppliers");
         var products=Options("products");
+        var productCosts=PurchaseOrderSavedCosts();
         if(suppliers.Count==0||products.Count==0)
             throw new InvalidOperationException("Create a supplier and at least one product before creating a PO.");
         if(editId>0 && FinancialOperations.PurchaseOrderInfo(editId).Status is not ("Draft" or "Open"))
@@ -64,18 +75,21 @@ internal sealed partial class MainForm
         var notes=new TextBox{Width=800,PlaceholderText="Purchase order notes (optional)"};
         var noteBar=new FlowLayoutPanel{Dock=DockStyle.Fill};
         noteBar.Controls.Add(FormLabel("Notes:"));noteBar.Controls.Add(notes);body.Controls.Add(noteBar,0,1);
-        body.Controls.Add(new Label{Text="Add product rows, then enter quantity and unit cost. All costs are per item.",
-            Dock=DockStyle.Fill,ForeColor=Color.FromArgb(100,117,138)},0,2);
+        var pricingHint=new Label{Text="Selecting a product automatically fills its saved unit cost. You can override the cost for this PO.",
+            Dock=DockStyle.Fill,ForeColor=Color.FromArgb(100,117,138)};
+        body.Controls.Add(pricingHint,0,2);
         var lines=new DataGridView{Dock=DockStyle.Fill,AutoGenerateColumns=false,
             AllowUserToAddRows=true,AllowUserToDeleteRows=true,RowHeadersVisible=false,BackgroundColor=Color.White};
         var productCol=new DataGridViewComboBoxColumn
         {
             HeaderText="Product",Name="Product",DataSource=products,
-            DisplayMember="Name",ValueMember="Id",Width=490
+            DisplayMember="Name",ValueMember="Id",Width=390
         };
         lines.Columns.Add(productCol);
-        lines.Columns.Add(new DataGridViewTextBoxColumn{HeaderText="Quantity",Name="Quantity",Width=135});
-        lines.Columns.Add(new DataGridViewTextBoxColumn{HeaderText="Unit Cost ($)",Name="UnitCost",Width=170});
+        lines.Columns.Add(new DataGridViewTextBoxColumn{HeaderText="Quantity",Name="Quantity",Width=105});
+        lines.Columns.Add(new DataGridViewTextBoxColumn{HeaderText="Unit Cost ($)",Name="UnitCost",Width=140});
+        lines.Columns.Add(new DataGridViewTextBoxColumn{HeaderText="Line Total",Name="LineTotal",
+            Width=130,ReadOnly=true});
         if(editId>0)
         {
             var info=FinancialOperations.PurchaseOrderInfo(editId);
@@ -83,9 +97,39 @@ internal sealed partial class MainForm
             on.Value=info.Date;
             notes.Text=info.Notes;
             foreach(var item in FinancialOperations.PurchaseLines(editId))
-                lines.Rows.Add(item.ProductId,item.Ordered,Repository.Dollars(item.CostCents).ToString("0.00"));
+                lines.Rows.Add(item.ProductId,item.Ordered,Repository.Dollars(item.CostCents).ToString("0.00"),
+                    Repository.Dollars(checked(item.Ordered*item.CostCents)).ToString("C2"));
         }
         lines.DataError+=(_,e)=>{e.ThrowException=false;};
+        lines.CurrentCellDirtyStateChanged+=(_,_)=>{
+            if(lines.IsCurrentCellDirty && lines.CurrentCell is DataGridViewComboBoxCell)
+                lines.CommitEdit(DataGridViewDataErrorContexts.Commit);
+        };
+        lines.CellValueChanged+=(_,e)=>{
+            if(e.RowIndex<0||lines.Rows[e.RowIndex].IsNewRow)return;
+            var row=lines.Rows[e.RowIndex];
+            if(e.ColumnIndex==lines.Columns["Product"]!.Index &&
+               row.Cells["Product"].Value is not null)
+            {
+                long selected=Convert.ToInt64(row.Cells["Product"].Value,CultureInfo.InvariantCulture);
+                if(productCosts.TryGetValue(selected,out var unit))
+                {
+                    row.Cells["UnitCost"].Value=Repository.Dollars(unit).ToString("0.00",CultureInfo.CurrentCulture);
+                    if(row.Cells["Quantity"].Value is null)
+                        row.Cells["Quantity"].Value=1;
+                }
+            }
+            if(e.ColumnIndex==lines.Columns["Product"]!.Index ||
+               e.ColumnIndex==lines.Columns["Quantity"]!.Index ||
+               e.ColumnIndex==lines.Columns["UnitCost"]!.Index)
+            {
+                if(int.TryParse(row.Cells["Quantity"].Value?.ToString(),out var q) && q>0 &&
+                   decimal.TryParse(row.Cells["UnitCost"].Value?.ToString(),NumberStyles.Currency,
+                       CultureInfo.CurrentCulture,out var cost) && cost>=0)
+                    row.Cells["LineTotal"].Value=(q*cost).ToString("C2",CultureInfo.CurrentCulture);
+                else row.Cells["LineTotal"].Value="";
+            }
+        };
         body.Controls.Add(lines,0,3);
         var footer=new FlowLayoutPanel{Dock=DockStyle.Fill,FlowDirection=FlowDirection.RightToLeft};
         var cancel=new Button{Text="Cancel",Width=130,Height=40,DialogResult=DialogResult.Cancel};
