@@ -95,6 +95,84 @@ internal static class FinancialSmokeTests
             var output=FinancialReports.Generate(report,start,end);
             if(output.Columns.Count==0)throw new Exception("Report has no columns: "+report);
         }
+        // Purchase order product picker now reads the catalog's saved unit cost.
+        var poCatalogCosts=MainForm.PurchaseOrderSavedCosts();
+        if(!poCatalogCosts.TryGetValue(product,out var catalogUnitCost) || catalogUnitCost<=0)
+            throw new Exception("PO picker did not load the product's saved unit cost.");
+
+        // Create/edit/approve/convert estimate. The linked invoice copies snapshot
+        // prices and descriptions, can be paid, and posts income only once.
+        var salesItems=new List<SalesLine>
+        {
+            new(product,"Custom printed tee",2,1299),
+            new(null,"Graphic setup fee",1,550)
+        };
+        var quoteTotals=SalesDocuments.Totals(salesItems,7.5m);
+        if(quoteTotals.Subtotal!=3148 || quoteTotals.Tax!=236 || quoteTotals.Total!=3384)
+            throw new Exception("Estimate tax calculation or subtotal incorrect.");
+        long estimate=SalesDocuments.Create("Estimate",customer,DateTime.Today,
+            "Estimate for CI",salesItems,7.5m);
+        if(SalesDocuments.Load(estimate).Status!="Draft")
+            throw new Exception("New estimates must start in Draft status.");
+        SalesDocuments.UpdateDraftEstimate(estimate,customer,DateTime.Today,
+            "Updated quote notes",salesItems,7.5m);
+        SalesDocuments.Approve(estimate);
+        try
+        {
+            SalesDocuments.UpdateDraftEstimate(estimate,customer,DateTime.Today,
+                "Too late",salesItems,7.5m);
+            throw new Exception("Approved estimate was edited.");
+        }
+        catch(InvalidOperationException e) when(e.Message.Contains("draft")) { }
+        if(SalesDocuments.Load(estimate).Status!="Approved")
+            throw new Exception("Estimate approval did not persist.");
+        long converted=SalesDocuments.ConvertApprovedEstimate(estimate,DateTime.Today);
+        if(SalesDocuments.Load(estimate).Status!="Converted")
+            throw new Exception("Converted estimate did not retain its original record.");
+        var resultingInvoice=SalesDocuments.Load(converted);
+        if(resultingInvoice.Kind!="Invoice" || resultingInvoice.Status!="Open" ||
+           resultingInvoice.SourceEstimateId!=estimate ||
+           resultingInvoice.Total!=3384 ||
+           resultingInvoice.Lines.Count!=2 ||
+           resultingInvoice.Lines[0].UnitPriceCents!=1299)
+            throw new Exception("Converted invoice did not preserve estimate totals and line prices.");
+        try
+        {
+            SalesDocuments.ConvertApprovedEstimate(estimate,DateTime.Today);
+            throw new Exception("Estimate was converted twice.");
+        }
+        catch(InvalidOperationException e) when(e.Message.Contains("already converted")) { }
+        if(FinancialOperations.InvoiceDue(converted)!=3384)
+            throw new Exception("Converted invoice outstanding balance is incorrect.");
+        if(FinancialOperations.Scalar(db,null,"""
+            SELECT count(*) FROM lab_fin_journal
+            WHERE source_type='lab_sales_invoice' AND source_id=@id
+            """,("id",converted))!=1)
+            throw new Exception("New invoice financial recognition missing or duplicated.");
+        FinancialOperations.PayInvoice(converted,10m,DateTime.Today,"ACH");
+        if(FinancialOperations.InvoiceDue(converted)!=2384)
+            throw new Exception("Converted invoice cannot accept a partial payment.");
+        long directInvoice=SalesDocuments.Create("Invoice",customer,DateTime.Today,
+            "Direct billing for lab",new List<SalesLine>{new(null,"On-site service",1,2000)},0m);
+        if(SalesDocuments.Load(directInvoice).Status!="Open" ||
+           SalesDocuments.Load(directInvoice).SourceEstimateId.HasValue)
+            throw new Exception("Direct invoice should open without an originating estimate.");
+        if(FinancialOperations.InvoiceDue(directInvoice)!=2000)
+            throw new Exception("Direct invoice has incorrect balance.");
+        if(FinancialOperations.Scalar(db,null,"""
+            SELECT count(*) FROM lab_fin_lines l
+            JOIN lab_fin_journal j ON j.id=l.journal_id
+            WHERE j.source_type='lab_sales_invoice' AND j.source_id=@id AND l.account='Sales Revenue'
+            """,("id",directInvoice))!=1)
+            throw new Exception("Direct invoice sales revenue not posted.");
+        FinancialOperations.PayInvoice(directInvoice,20m,DateTime.Today,"Bank Transfer");
+        if(FinancialOperations.InvoiceDue(directInvoice)!=0)
+            throw new Exception("Direct invoice could not be paid in full.");
+        if(Repository.Table("Sales Documents").Rows.Cast<System.Data.DataRow>()
+            .All(x=>Convert.ToInt64(x["ID"])!=converted ||
+                x["Source Estimate"]?.ToString()!=estimate.ToString()))
+            throw new Exception("Source estimate relationship is not visible in sales catalog.");
+
         // Bulk product edit: filter similar SKUs by prefix and supplier, exclude
         // archived products, preview individual prices and costs, and preserve
         // historic document line values.
