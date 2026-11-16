@@ -271,9 +271,14 @@ internal sealed partial class MainForm : Form
         }
         else if(page=="Estimates & Invoices")
         {
-            AddAction("Record Invoice Payment",()=>PayInvoiceOrSupplier(false),true,222);
-            AddAction("View Line Items",()=>ViewDetails(SelectedId()),false,170);
-            AddAction("Export Document PDF",()=>ExportDocumentPdf("Selected"),false,215);
+            AddAction("New Estimate",CreateEstimate,true,170);
+            AddAction("New Invoice",CreateInvoice,false,155);
+            AddAction("Edit Draft Estimate",EditDraftEstimate,false,198);
+            AddAction("Approve Estimate",ApproveEstimate,false,183);
+            AddAction("Convert to Invoice",ConvertEstimateToInvoice,false,192);
+            AddAction("Record Payment",()=>PayInvoiceOrSupplier(false),false,177);
+            AddAction("View Line Items",()=>ViewDetails(SelectedId()),false,168);
+            AddAction("Export Document PDF",()=>ExportDocumentPdf("Selected"),false,210);
         }
         AddAction("Export Visible CSV",()=>ExportCsv(),false,198);
         AddAction("Refresh",()=>RefreshGrid(),false,126);
@@ -321,6 +326,11 @@ internal sealed partial class MainForm : Form
         }
         else if(page=="Estimates & Invoices")
         {
+            context.Items.Add("Create new estimate",null,(_,_)=>Safe(CreateEstimate));
+            context.Items.Add("Create invoice directly",null,(_,_)=>Safe(CreateInvoice));
+            context.Items.Add("Edit draft estimate",null,(_,_)=>Safe(EditDraftEstimate));
+            context.Items.Add("Approve estimate",null,(_,_)=>Safe(ApproveEstimate));
+            context.Items.Add("Convert approved estimate to invoice",null,(_,_)=>Safe(ConvertEstimateToInvoice));
             context.Items.Add("View line items",null,(_,_)=>Safe(()=>ViewDetails(SelectedId())));
             context.Items.Add("Record invoice payment",null,(_,_)=>Safe(()=>PayInvoiceOrSupplier(false)));
             context.Items.Add("Export PDF",null,(_,_)=>Safe(()=>ExportDocumentPdf("Selected")));
