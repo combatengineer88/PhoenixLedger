@@ -164,8 +164,9 @@ internal sealed partial class MainForm
             decimal taxAmount=decimal.Round(subtotal*tax.Value/100m,2,MidpointRounding.AwayFromZero);
             totals.Text=$"Subtotal: {subtotal:C2}     Tax: {taxAmount:C2}     Total: {subtotal+taxAmount:C2}";
         }
+        bool loadingExisting=true;
         lines.CellValueChanged+=(_,e)=>{
-            if(e.RowIndex<0||lines.Rows[e.RowIndex].IsNewRow)return;
+            if(loadingExisting||e.RowIndex<0||lines.Rows[e.RowIndex].IsNewRow)return;
             var row=lines.Rows[e.RowIndex];
             if(e.ColumnIndex==lines.Columns["Product"]!.Index &&
                row.Cells["Product"].Value is not null)
@@ -192,6 +193,7 @@ internal sealed partial class MainForm
                     Repository.Dollars(item.UnitPriceCents).ToString("0.00",CultureInfo.CurrentCulture),
                     Repository.Dollars(checked(item.Quantity*item.UnitPriceCents)).ToString("C2",
                         CultureInfo.CurrentCulture));
+        loadingExisting=false;
         layout.Controls.Add(lines,0,3);
         layout.Controls.Add(totals,0,4);
         updateTotals();
