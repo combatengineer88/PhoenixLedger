@@ -86,6 +86,7 @@ internal static class FinancialOperations
         foreach(var (name,code,type) in accounts)
             Execute(db,null,"INSERT OR IGNORE INTO lab_fin_accounts(name,code,type) VALUES(@name,@code,@type)",
                 ("name",name),("code",code),("type",type));
+        SalesDocuments.Initialize();
     }
 
     private static SqliteCommand Command(SqliteConnection db,SqliteTransaction? tx,string sql,
@@ -372,7 +373,10 @@ internal static class FinancialOperations
 
     private static bool Recognized(SqliteConnection db,SqliteTransaction tx,long invoice)
     {
-        if(Scalar(db,tx,"SELECT count(*) FROM lab_fin_journal WHERE source_type='lab_invoice_opening' AND source_id=@id",("id",invoice))>0)
+        if(Scalar(db,tx,"""
+            SELECT count(*) FROM lab_fin_journal
+            WHERE source_id=@id AND source_type IN ('lab_invoice_opening','lab_sales_invoice')
+            """,("id",invoice))>0)
             return true;
         if(!BusinessData.HasTable(db,"journal"))return false;
         return Scalar(db,tx,"SELECT count(*) FROM journal WHERE source_type='invoice' AND source_id=@id",("id",invoice))>0;
