@@ -166,7 +166,8 @@ internal sealed partial class MainForm
         }
         bool loadingExisting=true;
         lines.CellValueChanged+=(_,e)=>{
-            if(loadingExisting||e.RowIndex<0||lines.Rows[e.RowIndex].IsNewRow)return;
+            if(loadingExisting||e.RowIndex<0||lines.Rows[e.RowIndex].IsNewRow||
+               e.ColumnIndex==lines.Columns["LineTotal"]!.Index)return;
             var row=lines.Rows[e.RowIndex];
             if(e.ColumnIndex==lines.Columns["Product"]!.Index &&
                row.Cells["Product"].Value is not null)
