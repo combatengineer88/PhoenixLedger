@@ -119,7 +119,7 @@ internal static class SalesDocuments
     {
         // Python snapshots may have AFTER INSERT triggers that already post
         // the invoice journal. Never post the same sale twice.
-        if(LegacyInvoicePosted(db,tx))return;
+        if(LegacyInvoicePosted(db,tx,id))return;
         if(FinancialOperations.Scalar(db,tx,
             "SELECT count(*) FROM lab_fin_journal WHERE source_type='lab_sales_invoice' AND source_id=@id",
             ("id",id))>0)return;
