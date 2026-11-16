@@ -64,6 +64,8 @@ internal sealed partial class MainForm
                 command("Product",()=>{ShowPage("Products / Catalog");Edit(0);}),
                 command("Customer",()=>{ShowPage("Customers");Edit(0);}),
                 command("Supplier",()=>{ShowPage("Suppliers");Edit(0);}),
+                command("Estimate",()=>{ShowPage("Estimates & Invoices");CreateEstimate();}),
+                command("Invoice (without estimate)",()=>{ShowPage("Estimates & Invoices");CreateInvoice();}),
                 command("Expense",()=>{ShowPage("Expenses");EditExpense(0);})
             ),
             new ToolStripSeparator(),
@@ -110,6 +112,10 @@ internal sealed partial class MainForm
             command("View update &log",OpenUpdateLog),
             new ToolStripSeparator(),
             command("Create &purchase order...",()=>{ShowPage("Purchase Orders");NewPurchaseOrder();}),
+            command("Create &estimate...",()=>{ShowPage("Estimates & Invoices");CreateEstimate();}),
+            command("Create &invoice directly...",()=>{ShowPage("Estimates & Invoices");CreateInvoice();}),
+            command("Approve selected estimate...",()=>{ShowPage("Estimates & Invoices");ApproveEstimate();}),
+            command("Convert approved estimate to invoice...",()=>{ShowPage("Estimates & Invoices");ConvertEstimateToInvoice();}),
             command("Record &invoice payment...",()=>{ShowPage("Estimates & Invoices");PayInvoiceOrSupplier(false);}),
             command("PDF &Layout Designer...",()=>OpenPdfDesigner("Invoice")),
             command("Record &budget...",ManageBudget),
@@ -187,6 +193,8 @@ internal sealed partial class MainForm
     {
         if(current is "Products / Catalog" or "Suppliers" or "Customers")Edit(0);
         else if(current=="Expenses")EditExpense(0);
+        else if(current=="Estimates & Invoices")CreateEstimate();
+        else if(current=="Purchase Orders")NewPurchaseOrder();
         else throw new InvalidOperationException("Adding records to this section is not available in the C# Lab yet.");
     }
 
@@ -194,7 +202,8 @@ internal sealed partial class MainForm
     {
         if(current is "Products / Catalog" or "Suppliers" or "Customers")Edit(SelectedId());
         else if(current=="Expenses")EditExpense(SelectedId());
-        else if(current is "Purchase Orders" or "Estimates & Invoices")ViewDetails(SelectedId());
+        else if(current=="Purchase Orders")EditPurchaseOrder();
+        else if(current=="Estimates & Invoices")EditDraftEstimate();
         else throw new InvalidOperationException("This section has no editable records yet.");
     }
 
